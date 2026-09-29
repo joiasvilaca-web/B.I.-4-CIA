@@ -433,8 +433,8 @@ function abrirFormRegistro(areaId, registro=null){
     <h3>${registro?'Editar':'Novo'} lançamento — ${esc(cfg?.nome||areaId)}</h3>
     ${!registro ? `
       <div class="zona-anexo-ia" id="zona-ia">
-        <div id="zona-ia-texto">📎 Anexe uma foto ou PDF para a IA ler o documento e preencher o formulário automaticamente</div>
-        <input type="file" id="in-anexo-ia" accept="image/*,.pdf" style="margin-top:8px">
+        <div id="zona-ia-texto">📎 Anexe foto, PDF ou planilha — foto e PDF a IA já lê e preenche o formulário automaticamente; planilha é só anexada</div>
+        <input type="file" id="in-anexo-ia" accept="image/*,.pdf,.xls,.xlsx,.csv" style="margin-top:8px">
       </div>
       <div id="area-avisos-ia"></div>
     ` : ''}
@@ -449,9 +449,22 @@ function abrirFormRegistro(areaId, registro=null){
   if(inAnexoIA) inAnexoIA.addEventListener('change', async ()=>{
     const f = inAnexoIA.files[0]; if(!f) return;
     const zona = document.getElementById('zona-ia'), txt = document.getElementById('zona-ia-texto');
-    zona.classList.add('analisando'); txt.textContent = '🤖 Lendo o documento com IA…';
-    const tipo = f.type.startsWith('image/') ? 'foto' : 'pdf';
+    const nomeExt = (f.name.split('.').pop()||'').toLowerCase();
+    const ehPlanilha = ['xls','xlsx','csv'].includes(nomeExt) || f.type.includes('spreadsheet') || f.type==='text/csv';
+    const tipo = ehPlanilha ? 'planilha' : (f.type.startsWith('image/') ? 'foto' : 'pdf');
     const reader = new FileReader();
+
+    if(tipo === 'planilha'){
+      reader.onload = ()=>{
+        const base64 = reader.result.split(',')[1];
+        _anexoPendente = { tipo, nome_original: f.name, base64, content_type: f.type };
+        txt.textContent = '📎 ' + f.name + ' — planilha anexada (sem leitura automática por IA ainda)';
+      };
+      reader.readAsDataURL(f);
+      return;
+    }
+
+    zona.classList.add('analisando'); txt.textContent = '🤖 Lendo o documento com IA…';
     reader.onload = async ()=>{
       const base64 = reader.result.split(',')[1];
       _anexoPendente = { tipo, nome_original: f.name, base64, content_type: f.type };
