@@ -112,6 +112,17 @@ table tr:hover td{background:#faf9f4}
 .badge-status.inativo{background:#eee;color:#888}
 .badge-status.bloqueado{background:#f7dada;color:var(--erro)}
 .carregando{text-align:center;color:#999;padding:30px;font-size:13px}
+.tabs-area{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #ddd}
+.tab-area{padding:9px 16px;font-size:13px;cursor:pointer;color:#777;border-bottom:2px solid transparent}
+.tab-area.ativo{color:var(--preto);font-weight:600;border-bottom-color:var(--dourado)}
+.box-ia{background:linear-gradient(135deg,#2c2a24,#3a3222);color:#f0ede2;border-radius:10px;padding:18px 20px;margin-bottom:18px}
+.box-ia h3{margin:0 0 10px;font-size:13px;color:var(--dourado);display:flex;align-items:center;gap:6px}
+.box-ia .txt{font-size:13px;line-height:1.7;white-space:pre-wrap}
+.box-ia .quando{font-size:11px;color:#a89f82;margin-top:10px}
+.zona-anexo-ia{border:2px dashed #cfc7a8;border-radius:8px;padding:16px;text-align:center;margin-bottom:8px;background:#faf9f4}
+.zona-anexo-ia.analisando{opacity:.6}
+.badge-dup{background:#f7dada;color:#a4202a;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px;display:flex;gap:8px;align-items:start}
+.badge-ok-ia{background:#dbeedb;color:#2f6b2f;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -280,6 +291,7 @@ async function renderDashboard(filtros={}){
 
   c.innerHTML = `
     <div class="topo-view"><div><h2>Painel Central</h2><div class="sub">Visão consolidada — ${d.areasIncluidas.join(', ')}</div></div></div>
+    ${d.insight ? `<div class="box-ia"><h3>🤖 Análise da IA</h3><div class="txt">${esc(d.insight.texto)}</div><div class="quando">Gerado em ${fmtData(d.insight.gerado_em)}</div></div>` : ''}
     <div class="filtros">
       <div><label>Data início</label><input type="date" id="f-inicio"></div>
       <div><label>Data fim</label><input type="date" id="f-fim"></div>
@@ -322,20 +334,33 @@ async function renderDashboard(filtros={}){
 }
 
 // ---------- ÁREA (P1-P5) ----------
+let abaArea = 'lancamentos';
 async function renderArea(areaId, opts={}){
   ST.areaAtual = areaId;
+  abaArea = opts.aba || 'lancamentos';
   const cfg = ST.areasConfig.find(a=>a.area_id===areaId);
   const acesso = acessoDe(areaId);
   const c = document.getElementById('conteudo');
-  let d;
-  try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
-  catch(e){ c.innerHTML = `<p style="color:red">${esc(e.message)}</p>`; return; }
-
   c.innerHTML = `
     <div class="topo-view">
       <div><h2>${cfg?.icone||'📁'} ${esc(cfg?.nome||areaId)}</h2><div class="sub">${esc(cfg?.descricao||'')}</div></div>
-      ${acesso==='edit' ? `<button class="btn" id="btn-novo-reg">+ Novo lançamento</button>` : ''}
+      ${acesso==='edit' && abaArea==='lancamentos' ? `<button class="btn" id="btn-novo-reg">+ Novo lançamento</button>` : ''}
     </div>
+    <div class="tabs-area">
+      <div class="tab-area ${abaArea==='lancamentos'?'ativo':''}" data-tab="lancamentos">Lançamentos</div>
+      <div class="tab-area ${abaArea==='dashboard'?'ativo':''}" data-tab="dashboard">📊 Dashboard</div>
+    </div>
+    <div id="area-corpo"><div class="carregando">Carregando…</div></div>
+  `;
+  document.querySelectorAll('.tab-area').forEach(el=>el.addEventListener('click', ()=>renderArea(areaId, {aba: el.dataset.tab})));
+  if(acesso==='edit' && abaArea==='lancamentos') document.getElementById('btn-novo-reg')?.addEventListener('click', ()=>abrirFormRegistro(areaId));
+
+  if(abaArea==='dashboard') return renderAreaDashboard(areaId, cfg);
+
+  let d;
+  try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
+  catch(e){ document.getElementById('area-corpo').innerHTML = `<p style="color:red">${esc(e.message)}</p>`; return; }
+  document.getElementById('area-corpo').innerHTML = `
     <div class="filtros">
       <div style="min-width:220px"><label>Buscar por título</label><input type="text" id="f-busca" value="${esc(opts.busca||'')}"></div>
       <div><label>De</label><input type="date" id="f-di" value="${opts.dataInicio||''}"></div>
@@ -346,8 +371,32 @@ async function renderArea(areaId, opts={}){
     <tbody>${d.registros.map(r=>`<tr><td>${esc(r.titulo)}</td><td>${esc(r.criado_por_nome||'')}</td><td>${fmtData(r.criado_em)}</td>
       <td class="acoes-lista"><button onclick="abrirRegistro(${r.id})">${acesso==='edit'?'Ver/Editar':'Ver'}</button></td></tr>`).join('') || `<tr><td colspan="4" style="color:#999">Nenhum registro lançado ainda</td></tr>`}</tbody></table>
   `;
-  if(acesso==='edit') document.getElementById('btn-novo-reg').addEventListener('click', ()=>abrirFormRegistro(areaId));
-  document.getElementById('f-buscar').addEventListener('click', ()=>renderArea(areaId, {busca:document.getElementById('f-busca').value, dataInicio:document.getElementById('f-di').value, dataFim:document.getElementById('f-df').value}));
+  document.getElementById('f-buscar').addEventListener('click', ()=>renderArea(areaId, {aba:'lancamentos', busca:document.getElementById('f-busca').value, dataInicio:document.getElementById('f-di').value, dataFim:document.getElementById('f-df').value}));
+}
+
+async function renderAreaDashboard(areaId, cfg){
+  const box = document.getElementById('area-corpo');
+  let d;
+  try{ d = await api('resumoArea', {area_id: areaId}); }
+  catch(e){ box.innerHTML = `<p style="color:red">${esc(e.message)}</p>`; return; }
+  box.innerHTML = `
+    ${d.insight ? `<div class="box-ia"><h3>🤖 Análise da IA — ${esc(cfg?.nome||areaId)}</h3><div class="txt">${esc(d.insight.texto)}</div><div class="quando">Gerado em ${fmtData(d.insight.gerado_em)}</div></div>` : ''}
+    <div class="cards-resumo"><div class="card-resumo"><div class="num">${d.total}</div><div class="lbl">Total de lançamentos</div></div>
+    ${d.indicadoresNumericos.map(ind=>`<div class="card-resumo"><div class="num">${ind.soma.toLocaleString('pt-BR')}</div><div class="lbl">${esc(ind.label)} (soma) · méd. ${ind.media.toFixed(1)}</div></div>`).join('')}</div>
+    <div class="graficos">
+      ${d.indicadoresCategoricos.map(ind=>`<div class="painel-box"><h3>${esc(ind.label)}</h3><canvas id="graf-cat-${ind.id}" height="140"></canvas></div>`).join('')}
+      ${d.indicadoresNumericos.length ? `<div class="painel-box"><h3>Indicadores numéricos</h3><canvas id="graf-num" height="140"></canvas></div>` : ''}
+    </div>
+    ${!d.indicadoresCategoricos.length && !d.indicadoresNumericos.length ? '<p style="color:#999;font-size:13px">Cadastre campos do tipo "Número" ou "Seleção" em Administração → Configurar Áreas para ver gráficos aqui.</p>' : ''}
+  `;
+  const cores = ['#8f7f45','#33502f','#2c4870','#7d2c2c','#5a2c7d','#b8a76a','#3a7d44'];
+  d.indicadoresCategoricos.forEach(ind=>{
+    const labels = Object.keys(ind.contagem), valores = Object.values(ind.contagem);
+    new Chart(document.getElementById('graf-cat-'+ind.id), { type:'doughnut', data:{ labels, datasets:[{data:valores, backgroundColor:cores}] }, options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}} } });
+  });
+  if(d.indicadoresNumericos.length){
+    new Chart(document.getElementById('graf-num'), { type:'bar', data:{ labels: d.indicadoresNumericos.map(i=>i.label), datasets:[{label:'Soma', data: d.indicadoresNumericos.map(i=>i.soma), backgroundColor:'#b8a76a'}] }, options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
+  }
 }
 
 function campoInputHtml(campo, valor){
@@ -360,19 +409,62 @@ function campoInputHtml(campo, valor){
   return `<input type="text" id="${id}" value="${esc(v)}">`;
 }
 
+let _anexoPendente = null; // {tipo, nome_original, base64, content_type} — só usado ao criar novo registro
 function abrirFormRegistro(areaId, registro=null){
+  _anexoPendente = null;
   const cfg = ST.areasConfig.find(a=>a.area_id===areaId);
   const campos = cfg?.campos || [];
   const dados = registro?.dados || {};
   abrirModal(`
     <button class="fechar" onclick="fecharModal()">×</button>
     <h3>${registro?'Editar':'Novo'} lançamento — ${esc(cfg?.nome||areaId)}</h3>
+    ${!registro ? `
+      <div class="zona-anexo-ia" id="zona-ia">
+        <div id="zona-ia-texto">📎 Anexe uma foto ou PDF para a IA ler o documento e preencher o formulário automaticamente</div>
+        <input type="file" id="in-anexo-ia" accept="image/*,.pdf" style="margin-top:8px">
+      </div>
+      <div id="area-avisos-ia"></div>
+    ` : ''}
     <label>Título</label><input type="text" id="rg-titulo" value="${esc(registro?.titulo||'')}">
     <label>Descrição</label><textarea id="rg-descricao" rows="3">${esc(registro?.descricao||'')}</textarea>
     ${campos.map(cp=>`<label>${esc(cp.label)}${cp.obrigatorio?' *':''}</label>${campoInputHtml(cp, dados[cp.id])}`).join('')}
     <div style="margin-top:18px;display:flex;gap:8px"><button class="btn" id="rg-salvar">Salvar</button><button class="btn secundario" onclick="fecharModal()">Cancelar</button></div>
     <div class="msg-modal" id="rg-msg"></div>
   `);
+
+  const inAnexoIA = document.getElementById('in-anexo-ia');
+  if(inAnexoIA) inAnexoIA.addEventListener('change', async ()=>{
+    const f = inAnexoIA.files[0]; if(!f) return;
+    const zona = document.getElementById('zona-ia'), txt = document.getElementById('zona-ia-texto');
+    zona.classList.add('analisando'); txt.textContent = '🤖 Lendo o documento com IA…';
+    const tipo = f.type.startsWith('image/') ? 'foto' : 'pdf';
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      const base64 = reader.result.split(',')[1];
+      _anexoPendente = { tipo, nome_original: f.name, base64, content_type: f.type };
+      try{
+        const d = await api('analisarArquivo', {area_id: areaId, tipo, base64, content_type: f.type});
+        const a = d.analise;
+        if(a.titulo_sugerido) document.getElementById('rg-titulo').value = a.titulo_sugerido;
+        if(a.resumo) document.getElementById('rg-descricao').value = a.resumo;
+        for(const cp of campos){
+          const val = a.campos?.[cp.id];
+          const el = document.getElementById('cc_'+cp.id);
+          if(val && el) el.value = val;
+        }
+        const avisos = document.getElementById('area-avisos-ia');
+        avisos.innerHTML = a.possivel_duplicado
+          ? `<div class="badge-dup">⚠️ <span>Possível duplicidade: ${esc(a.motivo_duplicado||'este documento parece semelhante a um lançamento já existente.')} Confira antes de salvar.</span></div>`
+          : `<div class="badge-ok-ia">✅ Documento lido — campos preenchidos automaticamente. Confira e ajuste se precisar.</div>`;
+        txt.textContent = '📎 ' + f.name + ' — analisado';
+      }catch(e){
+        txt.textContent = '⚠️ Não foi possível ler o documento agora (' + e.message + '). O arquivo ainda será anexado ao salvar.';
+      }
+      zona.classList.remove('analisando');
+    };
+    reader.readAsDataURL(f);
+  });
+
   document.getElementById('rg-salvar').addEventListener('click', async ()=>{
     const titulo = document.getElementById('rg-titulo').value.trim();
     const msg = document.getElementById('rg-msg');
@@ -385,8 +477,14 @@ function abrirFormRegistro(areaId, registro=null){
       dadosNovos[cp.id] = val;
     }
     try{
-      if(registro) await api('atualizarRegistro', {id:registro.id, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
-      else await api('criarRegistro', {area_id:areaId, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
+      if(registro){
+        await api('atualizarRegistro', {id:registro.id, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
+      } else {
+        const novo = await api('criarRegistro', {area_id:areaId, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
+        if(_anexoPendente){
+          await api('uploadAnexo', {registro_id: novo.registro.id, ..._anexoPendente, pular_analise:true, dados_extraidos: dadosNovos});
+        }
+      }
       fecharModal(); renderArea(areaId);
     }catch(e){ msg.className='msg-modal erro'; msg.textContent=e.message; }
   });
