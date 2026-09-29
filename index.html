@@ -288,6 +288,7 @@ async function renderDashboard(filtros={}){
   const nomeArea = id => ST.areasConfig.find(a=>a.area_id===id)?.nome || id;
   const meses = Object.keys(d.porMes).sort();
   const areasOrdenadas = AREAS.filter(a=>d.areasIncluidas.includes(a));
+  const semDados = d.total === 0;
 
   c.innerHTML = `
     <div class="topo-view"><div><h2>Painel Central</h2><div class="sub">Visão consolidada — ${d.areasIncluidas.join(', ')}</div></div></div>
@@ -303,8 +304,8 @@ async function renderDashboard(filtros={}){
       ${areasOrdenadas.map(a=>`<div class="card-resumo"><div class="num">${d.porArea[a]||0}</div><div class="lbl">${esc(nomeArea(a))}</div></div>`).join('')}
     </div>
     <div class="graficos">
-      <div class="painel-box"><h3>Lançamentos por mês</h3><canvas id="graf-mes" height="140"></canvas></div>
-      <div class="painel-box"><h3>Distribuição por área</h3><canvas id="graf-area" height="140"></canvas></div>
+      <div class="painel-box"><h3>Lançamentos por mês</h3>${semDados ? '<p style="color:#999;font-size:13px;padding:20px 0">Nenhum lançamento ainda — o gráfico aparece assim que a primeira área lançar dados.</p>' : '<canvas id="graf-mes" height="140"></canvas>'}</div>
+      <div class="painel-box"><h3>Distribuição por área</h3>${semDados ? '<p style="color:#999;font-size:13px;padding:20px 0">Sem lançamentos no período selecionado.</p>' : '<canvas id="graf-area" height="140"></canvas>'}</div>
     </div>
     <div class="painel-box">
       <h3>Últimos lançamentos</h3>
@@ -319,18 +320,20 @@ async function renderDashboard(filtros={}){
   document.getElementById('f-limpar').addEventListener('click', ()=>renderDashboard());
 
   const coresArea = {P1:'#8f7f45',P2:'#33502f',P3:'#2c4870',P4:'#7d2c2c',P5:'#5a2c7d'};
-  if(ST.charts.mes) ST.charts.mes.destroy();
-  ST.charts.mes = new Chart(document.getElementById('graf-mes'), {
-    type:'line',
-    data:{ labels: meses, datasets:[{label:'Lançamentos', data: meses.map(m=>d.porMes[m]), borderColor:'#b8a76a', backgroundColor:'rgba(184,167,106,.2)', fill:true, tension:.3}] },
-    options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}} }
-  });
-  if(ST.charts.area) ST.charts.area.destroy();
-  ST.charts.area = new Chart(document.getElementById('graf-area'), {
-    type:'doughnut',
-    data:{ labels: areasOrdenadas.map(nomeArea), datasets:[{data: areasOrdenadas.map(a=>d.porArea[a]||0), backgroundColor: areasOrdenadas.map(a=>coresArea[a])}] },
-    options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}} }
-  });
+  if(!semDados){
+    if(ST.charts.mes) ST.charts.mes.destroy();
+    ST.charts.mes = new Chart(document.getElementById('graf-mes'), {
+      type:'line',
+      data:{ labels: meses, datasets:[{label:'Lançamentos', data: meses.map(m=>d.porMes[m]), borderColor:'#b8a76a', backgroundColor:'rgba(184,167,106,.2)', fill:true, tension:.3}] },
+      options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}} }
+    });
+    if(ST.charts.area) ST.charts.area.destroy();
+    ST.charts.area = new Chart(document.getElementById('graf-area'), {
+      type:'doughnut',
+      data:{ labels: areasOrdenadas.map(nomeArea), datasets:[{data: areasOrdenadas.map(a=>d.porArea[a]||0), backgroundColor: areasOrdenadas.map(a=>coresArea[a])}] },
+      options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}} }
+    });
+  }
 }
 
 // ---------- ÁREA (P1-P5) ----------
@@ -379,17 +382,27 @@ async function renderAreaDashboard(areaId, cfg){
   let d;
   try{ d = await api('resumoArea', {area_id: areaId}); }
   catch(e){ box.innerHTML = `<p style="color:red">${esc(e.message)}</p>`; return; }
+  const semDados = d.total === 0;
+  const meses = Object.keys(d.porMes||{}).sort();
   box.innerHTML = `
     ${d.insight ? `<div class="box-ia"><h3>🤖 Análise da IA — ${esc(cfg?.nome||areaId)}</h3><div class="txt">${esc(d.insight.texto)}</div><div class="quando">Gerado em ${fmtData(d.insight.gerado_em)}</div></div>` : ''}
     <div class="cards-resumo"><div class="card-resumo"><div class="num">${d.total}</div><div class="lbl">Total de lançamentos</div></div>
     ${d.indicadoresNumericos.map(ind=>`<div class="card-resumo"><div class="num">${ind.soma.toLocaleString('pt-BR')}</div><div class="lbl">${esc(ind.label)} (soma) · méd. ${ind.media.toFixed(1)}</div></div>`).join('')}</div>
     <div class="graficos">
-      ${d.indicadoresCategoricos.map(ind=>`<div class="painel-box"><h3>${esc(ind.label)}</h3><canvas id="graf-cat-${ind.id}" height="140"></canvas></div>`).join('')}
+      <div class="painel-box"><h3>Lançamentos por mês</h3>${semDados ? '<p style="color:#999;font-size:13px;padding:20px 0">Nenhum lançamento ainda nesta área — o gráfico aparece assim que houver o primeiro.</p>' : '<canvas id="graf-area-mes" height="140"></canvas>'}</div>
       ${d.indicadoresNumericos.length ? `<div class="painel-box"><h3>Indicadores numéricos</h3><canvas id="graf-num" height="140"></canvas></div>` : ''}
+      ${d.indicadoresCategoricos.map(ind=>`<div class="painel-box"><h3>${esc(ind.label)}</h3><canvas id="graf-cat-${ind.id}" height="140"></canvas></div>`).join('')}
     </div>
-    ${!d.indicadoresCategoricos.length && !d.indicadoresNumericos.length ? '<p style="color:#999;font-size:13px">Cadastre campos do tipo "Número" ou "Seleção" em Administração → Configurar Áreas para ver gráficos aqui.</p>' : ''}
+    ${!semDados && !d.indicadoresCategoricos.length && !d.indicadoresNumericos.length ? '<p style="color:#999;font-size:13px">Dica: cadastre campos do tipo "Número" ou "Seleção" em Administração → Configurar Áreas para indicadores mais detalhados além da contagem de lançamentos.</p>' : ''}
   `;
   const cores = ['#8f7f45','#33502f','#2c4870','#7d2c2c','#5a2c7d','#b8a76a','#3a7d44'];
+  if(!semDados){
+    new Chart(document.getElementById('graf-area-mes'), {
+      type:'line',
+      data:{ labels: meses, datasets:[{label:'Lançamentos', data: meses.map(m=>d.porMes[m]), borderColor:'#b8a76a', backgroundColor:'rgba(184,167,106,.2)', fill:true, tension:.3}] },
+      options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}} }
+    });
+  }
   d.indicadoresCategoricos.forEach(ind=>{
     const labels = Object.keys(ind.contagem), valores = Object.values(ind.contagem);
     new Chart(document.getElementById('graf-cat-'+ind.id), { type:'doughnut', data:{ labels, datasets:[{data:valores, backgroundColor:cores}] }, options:{ plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}} } });
