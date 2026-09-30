@@ -434,7 +434,7 @@ function abrirFormRegistro(areaId, registro=null){
     ${!registro ? `
       <div class="zona-anexo-ia" id="zona-ia">
         <div id="zona-ia-texto">📎 Anexe foto, PDF ou planilha — foto e PDF a IA já lê e preenche o formulário automaticamente; planilha é só anexada</div>
-        <input type="file" id="in-anexo-ia" accept="image/*,.pdf,.xls,.xlsx,.csv" style="margin-top:8px">
+        <input type="file" id="in-anexo-ia" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv" style="margin-top:8px">
       </div>
       <div id="area-avisos-ia"></div>
     ` : ''}
@@ -450,7 +450,7 @@ function abrirFormRegistro(areaId, registro=null){
     const f = inAnexoIA.files[0]; if(!f) return;
     const zona = document.getElementById('zona-ia'), txt = document.getElementById('zona-ia-texto');
     const nomeExt = (f.name.split('.').pop()||'').toLowerCase();
-    const ehPlanilha = ['xls','xlsx','csv'].includes(nomeExt) || f.type.includes('spreadsheet') || f.type==='text/csv';
+    const ehPlanilha = ['xls','xlsx','xlsm','csv'].includes(nomeExt) || f.type.includes('spreadsheet') || f.type.includes('ms-excel') || f.type==='text/csv';
     const tipo = ehPlanilha ? 'planilha' : (f.type.startsWith('image/') ? 'foto' : 'pdf');
     const reader = new FileReader();
 
@@ -534,7 +534,7 @@ async function abrirRegistro(id){
       ${acesso==='edit'?`<button onclick="excluirAnexo(${an.id}, ${id})" style="border:none;background:none;cursor:pointer;color:#a4202a">🗑️</button>`:''}
     </span></div>`).join('') || '<div style="color:#999;font-size:13px">Nenhum anexo</div>'}</div>
     ${acesso==='edit' ? `
-      <div style="margin-top:12px"><label>Adicionar anexo (foto, PDF ou planilha)</label><input type="file" id="in-anexo" accept="image/*,.pdf,.xls,.xlsx,.csv"></div>
+      <div style="margin-top:12px"><label>Adicionar anexo (foto, PDF ou planilha)</label><input type="file" id="in-anexo" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv"></div>
       <div style="margin-top:14px;display:flex;gap:8px">
         <button class="btn" onclick="abrirFormRegistro('${areaId}', ${JSON.stringify(reg).replace(/"/g,'&quot;')})">Editar</button>
         <button class="btn perigo" onclick="excluirRegistroConfirma(${id}, '${areaId}')">Excluir</button>
