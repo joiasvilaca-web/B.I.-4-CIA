@@ -403,7 +403,8 @@ async function apiEscala(op, params={}){
   return d;
 }
 
-let ESC = { data:null, blocos:[], pendentes:[], texto:'', editando:false, editado:false, acesso:'view' };
+// dias[i] = {data:'YYYY-MM-DD', blocos:[], texto, editando, editado}; p2['YYYY-MM'] = {horario, dias:{'3':[{nome,patente}]}}
+let ESC = { dias:[], p2:{}, pendentes:[], avisos:[], acesso:'view' };
 
 function escHoras(turno){
   const m = String(turno||'').match(/\d{1,2}:\d{2}(?::\d{2})?/g) || [];
@@ -463,10 +464,16 @@ function escPrepararBlocos(blocos){
   });
   return out;
 }
-function escMontarTexto(){
-  const E = ESC;
-  if(!E.blocos || !E.blocos.length) return '';
-  let blocos = escPrepararBlocos(E.blocos).map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
+function escP2Do(data){
+  const m = String(data||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return null;
+  const p2 = ESC.p2[m[1]+'-'+m[2]];
+  if(!p2) return null;
+  return { horario: p2.horario || '14:00 às 00:00', lista: (p2.dias && p2.dias[String(parseInt(m[3],10))]) || [] };
+}
+function escMontarTexto(dia){
+  if(!dia || !dia.blocos || !dia.blocos.length) return '';
+  let blocos = escPrepararBlocos(dia.blocos).map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
   const ini = b => b.h ? b.h.ini.h*60 + b.h.ini.m : 0;
   blocos.sort((a,b)=> ini(a)-ini(b) || a.idx-b.idx);
 
@@ -491,12 +498,12 @@ function escMontarTexto(){
   };
 
   const L = [];
-  if(E.data){
-    const [y,mo,d] = E.data.split('-').map(Number);
+  if(dia.data){
+    const [y,mo,d] = dia.data.split('-').map(Number);
     const dt = new Date(y, mo-1, d);
-    const dia = String(d).padStart(2,'0')+'/'+String(mo).padStart(2,'0');
+    const dd = String(d).padStart(2,'0')+'/'+String(mo).padStart(2,'0');
     const sem = dt.toLocaleDateString('pt-BR',{weekday:'long'}).toUpperCase();
-    L.push('*4ªCIA PM IND GER*', `*ESCALA DIÁRIA ${dia}*`, `*${sem}*`, '');
+    L.push('*4ªCIA PM IND GER*', `*ESCALA DIÁRIA ${dd}*`, `*${sem}*`, '');
   } else {
     L.push('*4ªCIA PM IND GER*', '*ESCALA DIÁRIA*', '');
   }
@@ -530,6 +537,14 @@ function escMontarTexto(){
       L.push('');
     });
   });
+
+  // P2 (escala mensal da Seção de Inteligência) entra por último, abaixo da última equipe
+  const p2 = escP2Do(dia.data);
+  if(p2 && p2.lista.length){
+    L.push('*EQUIPE P2*', p2.horario, '');
+    p2.lista.forEach(m=>L.push(`${m.patente||'SGT'} ${m.nome}`));
+    L.push('');
+  }
   while(L.length && L[L.length-1]==='') L.pop();
   return L.join('\n');
 }
@@ -544,39 +559,70 @@ function escLerArquivoBase64(file){
 }
 function escCopiar(texto){
   if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(texto);
-  const ta = document.getElementById('esc-texto'); ta.select(); document.execCommand('copy'); return Promise.resolve();
+  const ta = document.createElement('textarea'); ta.value = texto; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }finally{ ta.remove(); }
+  return Promise.resolve();
+}
+function escRefazerNaoEditados(){
+  ESC.dias.forEach(d=>{ if(!d.editado) d.texto = escMontarTexto(d); });
+}
+function escDiaTitulo(data){
+  const m = String(data||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return 'Escala (sem data)';
+  const dt = new Date(+m[1], +m[2]-1, +m[3]);
+  return `${m[3]}/${m[2]} — ${dt.toLocaleDateString('pt-BR',{weekday:'long'})}`;
 }
 
 async function renderAreaEscala(areaId, acesso){
-  ESC = { data:null, blocos:[], pendentes:[], texto:'', editando:false, editado:false, acesso };
+  ESC = { dias:[], p2:{}, pendentes:[], avisos:[], acesso };
   const box = document.getElementById('area-corpo');
   box.innerHTML = `
     <div class="filtros" style="align-items:flex-end">
-      <div style="min-width:280px"><label>Anexe o PDF da escala (Relatório de acompanhamento diário)</label>
-        <input type="file" id="esc-arq" accept="application/pdf,.pdf"></div>
+      <div style="min-width:320px"><label>Anexe os PDFs da escala — pode escolher mais de um (relatório do SISP + escala mensal da P2)</label>
+        <input type="file" id="esc-arq" accept="application/pdf,.pdf" multiple></div>
       <div><button class="btn" id="esc-gerar">Gerar resumo</button></div>
       <div><button class="btn secundario" id="esc-efetivo">👥 Efetivo / nomes de guerra</button></div>
     </div>
-    <div id="esc-status" style="font-size:13px;color:#666;margin:8px 0"></div>
+    <div id="esc-status" style="font-size:13px;color:#666;margin:8px 0;line-height:1.5"></div>
     <div id="esc-pend"></div>
     <div id="esc-saida"></div>`;
   document.getElementById('esc-efetivo').addEventListener('click', ()=>escAbrirEfetivo());
-  document.getElementById('esc-gerar').addEventListener('click', async ()=>{
-    const f = document.getElementById('esc-arq').files[0];
-    const st = document.getElementById('esc-status');
-    if(!f){ st.style.color='#a4202a'; st.textContent='Escolha o PDF da escala primeiro.'; return; }
-    const btn = document.getElementById('esc-gerar'); btn.disabled = true;
-    st.style.color='#666'; st.textContent='Lendo a escala… pode levar alguns segundos.';
+  document.getElementById('esc-gerar').addEventListener('click', escGerar);
+}
+
+async function escGerar(){
+  const files = Array.from(document.getElementById('esc-arq').files || []);
+  const st = document.getElementById('esc-status');
+  if(!files.length){ st.style.color='#a4202a'; st.textContent='Escolha ao menos um PDF primeiro.'; return; }
+  const btn = document.getElementById('esc-gerar'); btn.disabled = true;
+  const linhas = [];
+  const pintar = (extra)=>{ st.style.color='#555'; st.innerHTML = linhas.map(l=>`<div>${l}</div>`).join('') + (extra?`<div>${extra}</div>`:''); };
+  for(let i=0;i<files.length;i++){
+    const f = files[i];
+    pintar(`⏳ Lendo ${i+1} de ${files.length}: ${esc(f.name)}… pode levar alguns segundos.`);
     try{
       const b64 = await escLerArquivoBase64(f);
       const d = await apiEscala('escalaProcessar', {base64:b64, content_type:'application/pdf'});
-      ESC = { ...ESC, data:d.data, blocos:d.blocos, pendentes:d.pendentes||[], editando:false, editado:false };
-      ESC.texto = escMontarTexto();
-      st.textContent = ESC.blocos.length ? '' : 'Não encontrei escalas nesse PDF.';
-      escRenderSaida();
-    }catch(e){ st.style.color='#a4202a'; st.textContent = e.message; }
-    btn.disabled = false;
-  });
+      if(d.tipo === 'p2_mensal'){
+        const key = d.p2.ano+'-'+String(d.p2.mes).padStart(2,'0');
+        ESC.p2[key] = d.p2;
+        linhas.push(`✅ ${esc(f.name)} — escala mensal da P2 (${String(d.p2.mes).padStart(2,'0')}/${d.p2.ano})`);
+        if((d.p2.nao_encontrados||[]).length) linhas.push(`⚠️ P2 sem cadastro no efetivo: ${esc(d.p2.nao_encontrados.join(', '))} (usei “SGT”). Cadastre em 👥 Efetivo.`);
+      } else {
+        const dia = { data: d.data || '', blocos: d.blocos, texto:'', editando:false, editado:false };
+        const ja = ESC.dias.findIndex(x=>x.data===dia.data);
+        if(ja>=0) ESC.dias[ja] = dia; else ESC.dias.push(dia);
+        (d.pendentes||[]).forEach(p=>{ if(!ESC.pendentes.find(x=>x.matricula===p.matricula)) ESC.pendentes.push(p); });
+        linhas.push(`✅ ${esc(f.name)} — escala diária ${esc(escDiaTitulo(dia.data))}`);
+      }
+    }catch(e){ linhas.push(`❌ ${esc(f.name)} — ${esc(e.message)}`); }
+  }
+  ESC.dias.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+  escRefazerNaoEditados();
+  ESC.pendentes = ESC.pendentes.filter(p=>ESC.dias.some(d=>d.blocos.some(b=>b.equipes.some(eq=>eq.militares.some(m=>m.matricula===p.matricula && !m.nome_guerra)))));
+  pintar('');
+  btn.disabled = false;
+  escRenderSaida();
 }
 
 function escRenderSaida(){
@@ -593,34 +639,46 @@ function escRenderSaida(){
       </div>`).join('')}
     </div>`;
   } else pend.innerHTML = '';
-  if(!ESC.texto){ saida.innerHTML=''; return; }
-  const linhas = ESC.texto.split('\n').length;
-  saida.innerHTML = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
-      <button class="btn secundario" id="esc-b-editar">${ESC.editando ? '✔️ Concluir edição' : '✏️ Editar'}</button>
-      <button class="btn secundario" id="esc-b-refazer">↻ Refazer texto</button>
-      <button class="btn secundario" id="esc-b-copiar">📋 Copiar</button>
-      <button class="btn" id="esc-b-zap" style="background:#25a244">💬 Enviar por WhatsApp</button>
-    </div>
-    <textarea id="esc-texto" ${ESC.editando?'':'readonly'} rows="${Math.min(Math.max(linhas+1,8),40)}"
-      style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;padding:12px;border:1px solid ${ESC.editando?'#2c4870':'#ccc'};border-radius:8px;background:${ESC.editando?'#fff':'#fafafa'}">${esc(ESC.texto)}</textarea>
-    <div style="font-size:12px;color:#888;margin-top:6px">Os trechos entre *asteriscos* ficam em negrito no WhatsApp. O botão abre o WhatsApp com o texto pronto — é só escolher a pessoa ou o grupo.</div>`;
-  document.getElementById('esc-texto').addEventListener('input', e=>{ ESC.texto = e.target.value; ESC.editado = true; });
-  document.getElementById('esc-b-editar').addEventListener('click', ()=>{ ESC.editando = !ESC.editando; escRenderSaida(); if(ESC.editando) document.getElementById('esc-texto').focus(); });
-  document.getElementById('esc-b-refazer').addEventListener('click', ()=>{
-    if(ESC.editado && !confirm('Isso descarta as suas edições manuais e gera o texto de novo. Continuar?')) return;
-    ESC.texto = escMontarTexto(); ESC.editado = false; ESC.editando = false; escRenderSaida();
-  });
-  document.getElementById('esc-b-copiar').addEventListener('click', async ()=>{
-    const b = document.getElementById('esc-b-copiar');
-    try{ await escCopiar(ESC.texto); b.textContent='✅ Copiado'; }catch(e){ b.textContent='Não consegui copiar'; }
-    setTimeout(()=>{ b.textContent='📋 Copiar'; }, 1800);
-  });
-  document.getElementById('esc-b-zap').addEventListener('click', ()=>{
-    window.open('https://wa.me/?text='+encodeURIComponent(ESC.texto), '_blank');
-  });
+  if(!ESC.dias.length){ saida.innerHTML = ESC.p2 && Object.keys(ESC.p2).length ? '<p style="color:#666;font-size:13px">Escala da P2 carregada. Anexe também o relatório diário do SISP para gerar o resumo.</p>' : ''; return; }
+  saida.innerHTML = ESC.dias.map((dia,i)=>{
+    const linhas = dia.texto.split('\n').length;
+    const p2 = escP2Do(dia.data);
+    const mm = String(dia.data||'').match(/^(\d{4})-(\d{2})/);
+    const dica = !p2 ? (mm ? `ℹ️ Para incluir os militares da P2, anexe também a escala mensal da P2 de ${mm[2]}/${mm[1]}.` : '')
+      : (!p2.lista.length ? 'ℹ️ A escala mensal da P2 não tem ninguém escalado neste dia.' : '');
+    return `<div style="margin:18px 0 28px">
+      <h3 style="margin:0 0 6px">📅 ${esc(escDiaTitulo(dia.data))}</h3>
+      ${dica ? `<div style="font-size:12px;color:#8a6d00;margin-bottom:6px">${esc(dica)}</div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+        <button class="btn secundario" onclick="escAcao(${i},'editar')">${dia.editando ? '✔️ Concluir edição' : '✏️ Editar'}</button>
+        <button class="btn secundario" onclick="escAcao(${i},'refazer')">↻ Refazer texto</button>
+        <button class="btn secundario" id="esc-b-copiar-${i}" onclick="escAcao(${i},'copiar')">📋 Copiar</button>
+        <button class="btn" style="background:#25a244" onclick="escAcao(${i},'zap')">💬 Enviar por WhatsApp</button>
+      </div>
+      <textarea id="esc-texto-${i}" ${dia.editando?'':'readonly'} oninput="escDigitou(${i}, this.value)" rows="${Math.min(Math.max(linhas+1,8),40)}"
+        style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;padding:12px;border:1px solid ${dia.editando?'#2c4870':'#ccc'};border-radius:8px;background:${dia.editando?'#fff':'#fafafa'}">${esc(dia.texto)}</textarea>
+    </div>`;
+  }).join('') + `<div style="font-size:12px;color:#888">Os trechos entre *asteriscos* ficam em negrito no WhatsApp. O botão verde abre o WhatsApp com o texto pronto — é só escolher a pessoa ou o grupo.</div>`;
+}
+function escDigitou(i, v){ const d = ESC.dias[i]; if(d){ d.texto = v; d.editado = true; } }
+async function escAcao(i, acao){
+  const dia = ESC.dias[i]; if(!dia) return;
+  if(acao==='editar'){ dia.editando = !dia.editando; escRenderSaida(); if(dia.editando){ const t=document.getElementById('esc-texto-'+i); if(t) t.focus(); } }
+  else if(acao==='refazer'){
+    if(dia.editado && !confirm('Isso descarta as suas edições manuais deste dia e gera o texto de novo. Continuar?')) return;
+    dia.texto = escMontarTexto(dia); dia.editado = false; dia.editando = false; escRenderSaida();
+  }
+  else if(acao==='copiar'){
+    const b = document.getElementById('esc-b-copiar-'+i);
+    try{ await escCopiar(dia.texto); if(b) b.textContent='✅ Copiado'; }catch(e){ if(b) b.textContent='Não consegui copiar'; }
+    setTimeout(()=>{ const bb=document.getElementById('esc-b-copiar-'+i); if(bb) bb.textContent='📋 Copiar'; }, 1800);
+  }
+  else if(acao==='zap'){ window.open('https://wa.me/?text='+encodeURIComponent(dia.texto), '_blank'); }
 }
 
+function escAtualizarNomeGuerra(matricula, ng){
+  ESC.dias.forEach(d=>d.blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ if(m.matricula===matricula) m.nome_guerra = ng || null; }))));
+}
 async function escSalvarPendente(i){
   const p = ESC.pendentes[i]; if(!p) return;
   const ng = (document.getElementById('esc-pg-'+i).value||'').trim().toUpperCase();
@@ -628,10 +686,11 @@ async function escSalvarPendente(i){
   if(!ng){ st.style.color='#a4202a'; st.textContent='Digite o nome de guerra.'; return; }
   try{
     await apiEscala('escalaEfetivoSalvar', {matricula:p.matricula, patente:p.patente, nome_completo:p.nome_completo, nome_guerra:ng});
-    ESC.blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ if(m.matricula===p.matricula) m.nome_guerra = ng; })));
+    escAtualizarNomeGuerra(p.matricula, ng);
     ESC.pendentes.splice(i,1);
-    if(!ESC.editado){ ESC.texto = escMontarTexto(); st.style.color='#2a7a2a'; st.textContent='Nome de guerra gravado.'; }
-    else { st.style.color='#2a7a2a'; st.textContent='Nome gravado. Clique em ↻ Refazer texto para aplicar no texto.'; }
+    const algumEditado = ESC.dias.some(d=>d.editado);
+    escRefazerNaoEditados();
+    st.style.color='#2a7a2a'; st.textContent = algumEditado ? 'Nome gravado. Nos dias que você editou, clique em ↻ Refazer texto para aplicar.' : 'Nome de guerra gravado.';
     escRenderSaida();
   }catch(e){ st.style.color='#a4202a'; st.textContent = e.message; }
 }
@@ -658,7 +717,8 @@ async function escSalvarEfetivo(i){
   const ng = (document.getElementById('ef-ng-'+i).value||'').trim();
   try{
     await apiEscala('escalaEfetivoSalvar', {matricula:p.matricula, patente:p.patente, nome_completo:p.nome_completo, nome_guerra:ng});
-    ESC.blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ if(m.matricula===p.matricula) m.nome_guerra = ng ? ng.toUpperCase() : null; })));
+    escAtualizarNomeGuerra(p.matricula, ng ? ng.toUpperCase() : null);
+    escRefazerNaoEditados();
     const b = document.getElementById('ef-ng-'+i); b.style.background = '#e4f5e4';
   }catch(e){ alert(e.message); }
 }
