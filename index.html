@@ -363,6 +363,7 @@ async function renderArea(areaId, opts={}){
     <div class="tabs-area">
       <div class="tab-area ${abaArea==='lancamentos'?'ativo':''}" data-tab="lancamentos">Lançamentos</div>
       <div class="tab-area ${abaArea==='dashboard'?'ativo':''}" data-tab="dashboard">📊 Dashboard</div>
+      ${areaId==='P3' ? `<div class="tab-area ${abaArea==='escala'?'ativo':''}" data-tab="escala">📋 Escala</div>` : ''}
     </div>
     <div id="area-corpo"><div class="carregando">Carregando…</div></div>
   `;
@@ -370,6 +371,7 @@ async function renderArea(areaId, opts={}){
   if(acesso==='edit' && abaArea==='lancamentos') document.getElementById('btn-novo-reg')?.addEventListener('click', ()=>abrirFormRegistro(areaId));
 
   if(abaArea==='dashboard') return renderAreaDashboard(areaId, cfg, filtroAreaDash);
+  if(abaArea==='escala' && areaId==='P3') return renderAreaEscala(areaId, acesso);
 
   let d;
   try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
@@ -386,6 +388,279 @@ async function renderArea(areaId, opts={}){
       <td class="acoes-lista"><button onclick="abrirRegistro(${r.id})">${acesso==='edit'?'Ver/Editar':'Ver'}</button></td></tr>`).join('') || `<tr><td colspan="4" style="color:#999">Nenhum registro lançado ainda</td></tr>`}</tbody></table>
   `;
   document.getElementById('f-buscar').addEventListener('click', ()=>renderArea(areaId, {aba:'lancamentos', busca:document.getElementById('f-busca').value, dataInicio:document.getElementById('f-di').value, dataFim:document.getElementById('f-df').value}));
+}
+
+// ================= ABA ESCALA (P3) =================
+const ESCALA_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-escala";
+async function apiEscala(op, params={}){
+  const r = await fetch(ESCALA_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify({op, token: ST.token, ...params})
+  });
+  const d = await r.json();
+  if(!d.ok){ throw new Error(d.erro || 'Erro desconhecido'); }
+  return d;
+}
+
+let ESC = { data:null, blocos:[], pendentes:[], texto:'', editando:false, editado:false, acesso:'view' };
+
+function escHoras(turno){
+  const m = String(turno||'').match(/\d{1,2}:\d{2}(?::\d{2})?/g) || [];
+  const t = m.map(x=>{ const p=x.split(':').map(Number); return {h:p[0], m:p[1], s:p[2]||0}; });
+  if(!t.length) return null;
+  const ini = (/^\s*\(/.test(String(turno)) && t.length>=3) ? t[1] : t[0];
+  const fim = t[t.length-1];
+  return {ini, fim};
+}
+function escFmt(t, arred){
+  let h=t.h, m=t.m;
+  if(arred && t.s>=59){ m+=1; if(m>=60){ m=0; h=(h+1)%24; } }
+  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+function escTitulo(escala){
+  const m = String(escala||'').match(/\(([^()]*)\)\s*$/);
+  let t = m ? m[1] : String(escala||'').split(' - ')[0];
+  t = t.replace(/^\s*4\s*[ªa]?\s*CIA PM IND (GER|PE)\s*-\s*/i, '').trim();
+  return t.toUpperCase();
+}
+function escFuncao(f){
+  const s = String(f||'').trim();
+  if(!s) return '';
+  if(/intendente/i.test(s)) return '';
+  if(/cmt?e?\s*guarni/i.test(s)) return 'Cmt Guarn.';
+  if(/cmt?e?\s*pelot/i.test(s)) return 'Cmt Pelotão';
+  if(/condutor/i.test(s)) return 'Condutor';
+  if(/patrulheiro/i.test(s)) return 'Patrulheiro';
+  return s;
+}
+function escOrdemFuncao(f){
+  const s = String(f||'');
+  if(/cmt?e?\s*(pelot|guarni)/i.test(s)) return 0;
+  if(/patrulheiro/i.test(s)) return 1;
+  if(/condutor/i.test(s)) return 2;
+  return 3;
+}
+function escBase(m){
+  const ng = (m.nome_guerra||'').trim();
+  if(ng) return ng.toUpperCase();
+  const partes = String(m.nome_completo||'').trim().split(/\s+/).filter(Boolean);
+  return (partes[partes.length-1]||'').toUpperCase();
+}
+// Equipes sem viatura que repetem exatamente os mesmos militares de uma equipe COM viatura (horário de apresentação) são descartadas
+function escPrepararBlocos(blocos){
+  const chave = eq => eq.militares.map(m=>m.matricula).filter(Boolean).sort().join(',');
+  const comRec = new Set();
+  blocos.forEach(b=>b.equipes.forEach(eq=>{ if(String(eq.recurso||'').trim()) comRec.add(chave(eq)); }));
+  const out = [];
+  blocos.forEach(b=>{
+    const eqs = b.equipes.filter(eq=>{
+      if(!eq.militares.length) return false;
+      if(String(eq.recurso||'').trim()) return true;
+      return !comRec.has(chave(eq));
+    });
+    if(eqs.length) out.push({...b, equipes:eqs});
+  });
+  return out;
+}
+function escMontarTexto(){
+  const E = ESC;
+  if(!E.blocos || !E.blocos.length) return '';
+  let blocos = escPrepararBlocos(E.blocos).map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
+  const ini = b => b.h ? b.h.ini.h*60 + b.h.ini.m : 0;
+  blocos.sort((a,b)=> ini(a)-ini(b) || a.idx-b.idx);
+
+  // homônimos no mesmo dia: mostra primeiro nome + nome de guerra
+  const uniq = {};
+  blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ uniq[m.matricula||m.nome_completo] = m; })));
+  const porNome = {};
+  Object.keys(uniq).forEach(k=>{ const n=escBase(uniq[k]); (porNome[n]=porNome[n]||new Set()).add(k); });
+  const dups = new Set();
+  Object.keys(uniq).forEach(k=>{ if(porNome[escBase(uniq[k])].size>1) dups.add(k); });
+  const nomeExibir = m => {
+    const base = escBase(m);
+    if(dups.has(m.matricula||m.nome_completo)){
+      const pn = String(m.nome_completo||'').trim().split(/\s+/)[0]||'';
+      if(pn && !base.startsWith(pn.toUpperCase())) return pn.toUpperCase()+' '+base;
+    }
+    return base;
+  };
+  const linhaMil = m => {
+    const f = escFuncao(m.funcao);
+    return `${m.patente||''} ${nomeExibir(m)}${f ? ' ('+f+')' : ''}`.trim();
+  };
+
+  const L = [];
+  if(E.data){
+    const [y,mo,d] = E.data.split('-').map(Number);
+    const dt = new Date(y, mo-1, d);
+    const dia = String(d).padStart(2,'0')+'/'+String(mo).padStart(2,'0');
+    const sem = dt.toLocaleDateString('pt-BR',{weekday:'long'}).toUpperCase();
+    L.push('*4ªCIA PM IND GER*', `*ESCALA DIÁRIA ${dia}*`, `*${sem}*`, '');
+  } else {
+    L.push('*4ªCIA PM IND GER*', '*ESCALA DIÁRIA*', '');
+  }
+
+  const intend = blocos.filter(b=>/INTEND/.test(b.titulo));
+  let intendFeito = false;
+  blocos.forEach(b=>{
+    if(/INTEND/.test(b.titulo)){
+      if(intendFeito) return;
+      intendFeito = true;
+      const rec = (intend[0].equipes[0]||{}).recurso;
+      L.push(`*INTENDÊNCIA${rec ? ' ('+rec+')' : ''}*`);
+      L.push(intend.map(x=>{
+        const dn = x.h ? (x.h.ini.h < 12 ? 'dia' : 'noite') : '';
+        return x.h ? `${escFmt(x.h.ini)} às ${escFmt(x.h.fim,true)}${dn ? ' ('+dn+')' : ''}` : '';
+      }).filter(Boolean).join(' / '));
+      L.push('');
+      intend.forEach(x=>{
+        const rot = (x.h && x.h.ini.h >= 12) ? 'NOITE' : 'DIA';
+        x.equipes.forEach(eq=>eq.militares.forEach(m=>L.push(`${rot} — ${linhaMil(m)}`)));
+      });
+      L.push('');
+      return;
+    }
+    L.push(`*${b.titulo}*`);
+    if(b.h) L.push(`${escFmt(b.h.ini)} às ${escFmt(b.h.fim,true)}`);
+    L.push('');
+    b.equipes.forEach(eq=>{
+      L.push(String(eq.recurso||'').trim() || String(eq.equipe||'').trim());
+      eq.militares.slice().sort((a,b)=>escOrdemFuncao(a.funcao)-escOrdemFuncao(b.funcao)).forEach(m=>L.push(linhaMil(m)));
+      L.push('');
+    });
+  });
+  while(L.length && L[L.length-1]==='') L.pop();
+  return L.join('\n');
+}
+
+function escLerArquivoBase64(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(String(r.result).split(',')[1]);
+    r.onerror = ()=>reject(new Error('Não foi possível ler o arquivo'));
+    r.readAsDataURL(file);
+  });
+}
+function escCopiar(texto){
+  if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(texto);
+  const ta = document.getElementById('esc-texto'); ta.select(); document.execCommand('copy'); return Promise.resolve();
+}
+
+async function renderAreaEscala(areaId, acesso){
+  ESC = { data:null, blocos:[], pendentes:[], texto:'', editando:false, editado:false, acesso };
+  const box = document.getElementById('area-corpo');
+  box.innerHTML = `
+    <div class="filtros" style="align-items:flex-end">
+      <div style="min-width:280px"><label>Anexe o PDF da escala (Relatório de acompanhamento diário)</label>
+        <input type="file" id="esc-arq" accept="application/pdf,.pdf"></div>
+      <div><button class="btn" id="esc-gerar">Gerar resumo</button></div>
+      <div><button class="btn secundario" id="esc-efetivo">👥 Efetivo / nomes de guerra</button></div>
+    </div>
+    <div id="esc-status" style="font-size:13px;color:#666;margin:8px 0"></div>
+    <div id="esc-pend"></div>
+    <div id="esc-saida"></div>`;
+  document.getElementById('esc-efetivo').addEventListener('click', ()=>escAbrirEfetivo());
+  document.getElementById('esc-gerar').addEventListener('click', async ()=>{
+    const f = document.getElementById('esc-arq').files[0];
+    const st = document.getElementById('esc-status');
+    if(!f){ st.style.color='#a4202a'; st.textContent='Escolha o PDF da escala primeiro.'; return; }
+    const btn = document.getElementById('esc-gerar'); btn.disabled = true;
+    st.style.color='#666'; st.textContent='Lendo a escala… pode levar alguns segundos.';
+    try{
+      const b64 = await escLerArquivoBase64(f);
+      const d = await apiEscala('escalaProcessar', {base64:b64, content_type:'application/pdf'});
+      ESC = { ...ESC, data:d.data, blocos:d.blocos, pendentes:d.pendentes||[], editando:false, editado:false };
+      ESC.texto = escMontarTexto();
+      st.textContent = ESC.blocos.length ? '' : 'Não encontrei escalas nesse PDF.';
+      escRenderSaida();
+    }catch(e){ st.style.color='#a4202a'; st.textContent = e.message; }
+    btn.disabled = false;
+  });
+}
+
+function escRenderSaida(){
+  const pend = document.getElementById('esc-pend');
+  const saida = document.getElementById('esc-saida');
+  if(!pend || !saida) return;
+  if(ESC.pendentes.length){
+    pend.innerHTML = `<div style="background:#fff6d6;border:1px solid #e6cf72;border-radius:8px;padding:12px;margin:10px 0">
+      <b>⚠️ ${ESC.pendentes.length} militar(es) sem nome de guerra cadastrado</b> — usei o último sobrenome no texto. Informe o nome de guerra para gravar e usar nas próximas escalas:
+      ${ESC.pendentes.map((p,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <span style="min-width:260px;font-size:13px">${esc(p.patente)} ${esc(p.nome_completo)}</span>
+        <input type="text" id="esc-pg-${i}" value="${esc(escBase({nome_completo:p.nome_completo}))}" style="width:180px">
+        <button class="btn secundario" onclick="escSalvarPendente(${i})" ${ESC.acesso==='edit'?'':'disabled title="Sem permissão de edição no P3"'}>Salvar</button>
+      </div>`).join('')}
+    </div>`;
+  } else pend.innerHTML = '';
+  if(!ESC.texto){ saida.innerHTML=''; return; }
+  const linhas = ESC.texto.split('\n').length;
+  saida.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <button class="btn secundario" id="esc-b-editar">${ESC.editando ? '✔️ Concluir edição' : '✏️ Editar'}</button>
+      <button class="btn secundario" id="esc-b-refazer">↻ Refazer texto</button>
+      <button class="btn secundario" id="esc-b-copiar">📋 Copiar</button>
+      <button class="btn" id="esc-b-zap" style="background:#25a244">💬 Enviar por WhatsApp</button>
+    </div>
+    <textarea id="esc-texto" ${ESC.editando?'':'readonly'} rows="${Math.min(Math.max(linhas+1,8),40)}"
+      style="width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;padding:12px;border:1px solid ${ESC.editando?'#2c4870':'#ccc'};border-radius:8px;background:${ESC.editando?'#fff':'#fafafa'}">${esc(ESC.texto)}</textarea>
+    <div style="font-size:12px;color:#888;margin-top:6px">Os trechos entre *asteriscos* ficam em negrito no WhatsApp. O botão abre o WhatsApp com o texto pronto — é só escolher a pessoa ou o grupo.</div>`;
+  document.getElementById('esc-texto').addEventListener('input', e=>{ ESC.texto = e.target.value; ESC.editado = true; });
+  document.getElementById('esc-b-editar').addEventListener('click', ()=>{ ESC.editando = !ESC.editando; escRenderSaida(); if(ESC.editando) document.getElementById('esc-texto').focus(); });
+  document.getElementById('esc-b-refazer').addEventListener('click', ()=>{
+    if(ESC.editado && !confirm('Isso descarta as suas edições manuais e gera o texto de novo. Continuar?')) return;
+    ESC.texto = escMontarTexto(); ESC.editado = false; ESC.editando = false; escRenderSaida();
+  });
+  document.getElementById('esc-b-copiar').addEventListener('click', async ()=>{
+    const b = document.getElementById('esc-b-copiar');
+    try{ await escCopiar(ESC.texto); b.textContent='✅ Copiado'; }catch(e){ b.textContent='Não consegui copiar'; }
+    setTimeout(()=>{ b.textContent='📋 Copiar'; }, 1800);
+  });
+  document.getElementById('esc-b-zap').addEventListener('click', ()=>{
+    window.open('https://wa.me/?text='+encodeURIComponent(ESC.texto), '_blank');
+  });
+}
+
+async function escSalvarPendente(i){
+  const p = ESC.pendentes[i]; if(!p) return;
+  const ng = (document.getElementById('esc-pg-'+i).value||'').trim().toUpperCase();
+  const st = document.getElementById('esc-status');
+  if(!ng){ st.style.color='#a4202a'; st.textContent='Digite o nome de guerra.'; return; }
+  try{
+    await apiEscala('escalaEfetivoSalvar', {matricula:p.matricula, patente:p.patente, nome_completo:p.nome_completo, nome_guerra:ng});
+    ESC.blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ if(m.matricula===p.matricula) m.nome_guerra = ng; })));
+    ESC.pendentes.splice(i,1);
+    if(!ESC.editado){ ESC.texto = escMontarTexto(); st.style.color='#2a7a2a'; st.textContent='Nome de guerra gravado.'; }
+    else { st.style.color='#2a7a2a'; st.textContent='Nome gravado. Clique em ↻ Refazer texto para aplicar no texto.'; }
+    escRenderSaida();
+  }catch(e){ st.style.color='#a4202a'; st.textContent = e.message; }
+}
+
+async function escAbrirEfetivo(busca=''){
+  abrirModal(`<h3 style="margin-top:0">👥 Efetivo — nomes de guerra</h3>
+    <div style="display:flex;gap:8px;margin-bottom:10px"><input type="text" id="ef-busca" placeholder="Buscar por nome, nome de guerra ou matrícula" value="${esc(busca)}" style="flex:1"><button class="btn secundario" id="ef-buscar">Buscar</button></div>
+    <div id="ef-lista" style="max-height:60vh;overflow:auto"><div class="carregando">Carregando…</div></div>
+    <div style="text-align:right;margin-top:10px"><button class="btn secundario" onclick="fecharModal()">Fechar</button></div>`);
+  document.getElementById('ef-buscar').addEventListener('click', ()=>escAbrirEfetivo(document.getElementById('ef-busca').value));
+  try{
+    const d = await apiEscala('escalaEfetivoListar', {busca});
+    window.__EFETIVO = d.efetivo;
+    const pode = ESC.acesso==='edit';
+    document.getElementById('ef-lista').innerHTML = `<table><thead><tr><th>Patente</th><th>Nome completo</th><th>Nome de guerra</th><th></th></tr></thead><tbody>
+      ${d.efetivo.map((p,i)=>`<tr><td>${esc(p.patente||'')}</td><td style="font-size:12px">${esc(p.nome_completo)}</td>
+        <td><input type="text" id="ef-ng-${i}" value="${esc(p.nome_guerra||'')}" style="width:150px" ${pode?'':'disabled'}></td>
+        <td>${pode?`<button class="btn secundario" onclick="escSalvarEfetivo(${i})">Salvar</button>`:''}</td></tr>`).join('') || '<tr><td colspan="4" style="color:#999">Nada encontrado</td></tr>'}
+      </tbody></table>`;
+  }catch(e){ document.getElementById('ef-lista').innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p>`; }
+}
+async function escSalvarEfetivo(i){
+  const p = (window.__EFETIVO||[])[i]; if(!p) return;
+  const ng = (document.getElementById('ef-ng-'+i).value||'').trim();
+  try{
+    await apiEscala('escalaEfetivoSalvar', {matricula:p.matricula, patente:p.patente, nome_completo:p.nome_completo, nome_guerra:ng});
+    ESC.blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ if(m.matricula===p.matricula) m.nome_guerra = ng ? ng.toUpperCase() : null; })));
+    const b = document.getElementById('ef-ng-'+i); b.style.background = '#e4f5e4';
+  }catch(e){ alert(e.message); }
 }
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
