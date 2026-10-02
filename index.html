@@ -244,7 +244,8 @@ async function iniciarApp(){
   const areasCfg = await api('areasConfig');
   ST.areasConfig = areasCfg.areas;
   montarMenu();
-  const primeiraView = ST.usuario.nivel_base==='MASTER' || ST.nivelConfig?.ve_painel_geral ? 'dashboard' : (AREAS.find(a=>acessoDe(a)!=='none') || null);
+  const primeiraArea = AREAS.find(a=>acessoDe(a)!=='none');
+  const primeiraView = ST.usuario.nivel_base==='MASTER' || ST.nivelConfig?.ve_painel_geral ? 'dashboard' : (primeiraArea ? 'area:'+primeiraArea : null);
   if(primeiraView) irPara(primeiraView); else document.getElementById('conteudo').innerHTML = '<p style="padding:30px;color:#888">Você não tem acesso a nenhuma área ainda. Procure a Administração.</p>';
 }
 
