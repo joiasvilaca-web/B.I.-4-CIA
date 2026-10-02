@@ -472,6 +472,17 @@ function escP2Do(data){
   if(!p2) return null;
   return { horario: p2.horario || '14:00 às 00:00', lista: (p2.dias && p2.dias[String(parseInt(m[3],10))]) || [] };
 }
+// Administração / ADM ROCCA (e variações) nunca entram no resumo
+function escEhAdm(txt){
+  const t = String(txt||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  return /\bADM\b|ADMINISTRA/.test(t);
+}
+function escBlocosUteis(dia){
+  return ((dia && dia.blocos) || [])
+    .filter(b=>!escEhAdm(escTitulo(b.escala)) && !escEhAdm(String(b.escala||'').split(' - ')[0]))
+    .map(b=>({...b, equipes:(b.equipes||[]).filter(eq=>!escEhAdm(eq.equipe) && !escEhAdm(eq.recurso))}))
+    .filter(b=>b.equipes.length);
+}
 function escMin(h){
   if(!h) return null;
   const s = h.ini.h*60 + h.ini.m;
@@ -484,8 +495,9 @@ function escHm(min){
   return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 }
 function escMontarTexto(dia){
-  if(!dia || !dia.blocos || !dia.blocos.length) return '';
-  const blocos = dia.blocos.map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
+  const uteis = escBlocosUteis(dia);
+  if(!uteis.length) return '';
+  const blocos = uteis.map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
   blocos.forEach(b=>{ b.r = escMin(b.h); });
   const ehInt = b => /INTEND/.test(b.titulo);
   const chave = eq => eq.militares.map(m=>m.matricula).filter(Boolean).sort().join(',');
@@ -690,7 +702,7 @@ async function escGerar(){
   }
   ESC.dias.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
   escRefazerNaoEditados();
-  ESC.pendentes = ESC.pendentes.filter(p=>ESC.dias.some(d=>d.blocos.some(b=>b.equipes.some(eq=>eq.militares.some(m=>m.matricula===p.matricula && !m.nome_guerra)))));
+  ESC.pendentes = ESC.pendentes.filter(p=>ESC.dias.some(d=>escBlocosUteis(d).some(b=>b.equipes.some(eq=>eq.militares.some(m=>m.matricula===p.matricula && !m.nome_guerra)))));
   pintar('');
   btn.disabled = false;
   escRenderSaida();
