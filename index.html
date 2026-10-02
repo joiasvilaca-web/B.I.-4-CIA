@@ -472,15 +472,70 @@ function escP2Do(data){
   if(!p2) return null;
   return { horario: p2.horario || '14:00 às 00:00', lista: (p2.dias && p2.dias[String(parseInt(m[3],10))]) || [] };
 }
+function escMin(h){
+  if(!h) return null;
+  const s = h.ini.h*60 + h.ini.m;
+  let e = h.fim.h*60 + h.fim.m + (h.fim.s>=59 ? 1 : 0);
+  if(e<=s) e += 1440;
+  return {s, e};
+}
+function escHm(min){
+  const m = ((min % 1440) + 1440) % 1440;
+  return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
 function escMontarTexto(dia){
   if(!dia || !dia.blocos || !dia.blocos.length) return '';
-  let blocos = escPrepararBlocos(dia.blocos).map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
-  const ini = b => b.h ? b.h.ini.h*60 + b.h.ini.m : 0;
-  blocos.sort((a,b)=> ini(a)-ini(b) || a.idx-b.idx);
+  const blocos = dia.blocos.map((b,i)=>({...b, idx:i, h:escHoras(b.turno), titulo:escTitulo(b.escala)}));
+  blocos.forEach(b=>{ b.r = escMin(b.h); });
+  const ehInt = b => /INTEND/.test(b.titulo);
+  const chave = eq => eq.militares.map(m=>m.matricula).filter(Boolean).sort().join(',');
+  const temRec = eq => !!String(eq.recurso||'').trim();
+
+  // Período SEM viatura (apresentação/preparo) de uma guarnição que depois tem período COM viatura:
+  // o horário mostrado é o turno todo (do início do período sem viatura ao fim do período com viatura).
+  const semRec = [];
+  blocos.forEach(b=>{ if(ehInt(b)) return; b.equipes.forEach(eq=>{
+    if(eq.militares.length && !temRec(eq)) semRec.push({eq, key:chave(eq), r:b.r, usado:false});
+  }); });
+  const faixa = new Map();
+  blocos.forEach(b=>{ if(ehInt(b)) return; b.equipes.forEach(eq=>{
+    if(!eq.militares.length || !temRec(eq)) return;
+    let r = b.r ? {s:b.r.s, e:b.r.e} : null;
+    const k = chave(eq);
+    if(k) semRec.forEach(x=>{
+      if(!x.usado && x.key===k && x.r){
+        x.usado = true;
+        if(r){ r.s = Math.min(r.s, x.r.s); r.e = Math.max(r.e, x.r.e); } else r = {s:x.r.s, e:x.r.e};
+      }
+    });
+    faixa.set(eq, r);
+  }); });
+  semRec.forEach(x=>{ if(!x.usado) faixa.set(x.eq, x.r); });
+
+  const entradas = [];
+  const intend = blocos.filter(ehInt);
+  if(intend.length) entradas.push({tipo:'int', ini: Math.min(...intend.map(x=>x.r ? x.r.s : 0)), idx: intend[0].idx});
+  blocos.forEach(b=>{
+    if(ehInt(b)) return;
+    const itens = b.equipes.filter(eq=>eq.militares.length && faixa.has(eq)).map(eq=>({eq, r:faixa.get(eq)}));
+    const grupos = [];
+    itens.forEach(it=>{
+      const k = it.r ? it.r.s+'-'+it.r.e : 'x';
+      let g = grupos.find(x=>x.k===k);
+      if(!g){ g = {k, r:it.r, eqs:[]}; grupos.push(g); }
+      g.eqs.push(it.eq);
+    });
+    grupos.forEach(g=>entradas.push({tipo:'blk', b, r:g.r, eqs:g.eqs, ini: g.r ? g.r.s : 0, idx:b.idx}));
+  });
+  entradas.sort((x,y)=> x.ini-y.ini || x.idx-y.idx);
 
   // homônimos no mesmo dia: mostra primeiro nome + nome de guerra
   const uniq = {};
-  blocos.forEach(b=>b.equipes.forEach(eq=>eq.militares.forEach(m=>{ uniq[m.matricula||m.nome_completo] = m; })));
+  const reg = m => { uniq[m.matricula||m.nome_completo] = m; };
+  entradas.forEach(en=>{
+    if(en.tipo==='blk') en.eqs.forEach(eq=>eq.militares.forEach(reg));
+    else intend.forEach(x=>x.equipes.forEach(eq=>eq.militares.forEach(reg)));
+  });
   const porNome = {};
   Object.keys(uniq).forEach(k=>{ const n=escBase(uniq[k]); (porNome[n]=porNome[n]||new Set()).add(k); });
   const dups = new Set();
@@ -509,17 +564,14 @@ function escMontarTexto(dia){
     L.push('*4ªCIA PM IND GER*', '*ESCALA DIÁRIA*', '');
   }
 
-  const intend = blocos.filter(b=>/INTEND/.test(b.titulo));
-  let intendFeito = false;
-  blocos.forEach(b=>{
-    if(/INTEND/.test(b.titulo)){
-      if(intendFeito) return;
-      intendFeito = true;
+  entradas.forEach(en=>{
+    if(en.tipo==='int'){
       const rec = (intend[0].equipes[0]||{}).recurso;
       L.push(`*INTENDÊNCIA${rec ? ' ('+rec+')' : ''}*`);
       L.push(intend.map(x=>{
-        const dn = x.h ? (x.h.ini.h < 12 ? 'dia' : 'noite') : '';
-        return x.h ? `${escFmt(x.h.ini)} às ${escFmt(x.h.fim,true)}${dn ? ' ('+dn+')' : ''}` : '';
+        if(!x.r) return '';
+        const dn = x.h.ini.h < 12 ? 'dia' : 'noite';
+        return `${escHm(x.r.s)} às ${escHm(x.r.e)} (${dn})`;
       }).filter(Boolean).join(' / '));
       L.push('');
       intend.forEach(x=>{
@@ -529,10 +581,10 @@ function escMontarTexto(dia){
       L.push('');
       return;
     }
-    L.push(`*${b.titulo}*`);
-    if(b.h) L.push(`${escFmt(b.h.ini)} às ${escFmt(b.h.fim,true)}`);
+    L.push(`*${en.b.titulo}*`);
+    if(en.r) L.push(`${escHm(en.r.s)} às ${escHm(en.r.e)}`);
     L.push('');
-    b.equipes.forEach(eq=>{
+    en.eqs.forEach(eq=>{
       L.push(String(eq.recurso||'').trim() || String(eq.equipe||'').trim());
       eq.militares.slice().sort((a,b)=>escOrdemFuncao(a.funcao)-escOrdemFuncao(b.funcao)).forEach(m=>L.push(linhaMil(m)));
       L.push('');
@@ -579,16 +631,22 @@ async function renderAreaEscala(areaId, acesso){
   const box = document.getElementById('area-corpo');
   box.innerHTML = `
     <div class="filtros" style="align-items:flex-end">
-      <div style="min-width:320px"><label>Anexe os PDFs da escala — pode escolher mais de um (relatório do SISP + escala mensal da P2)</label>
-        <input type="file" id="esc-arq" accept="application/pdf,.pdf" multiple></div>
+      <div style="min-width:340px"><label>Anexe os PDFs da escala — pode escolher os dois de uma vez (relatório do SISP + escala mensal da P2)</label>
+        <input type="file" id="esc-arq" accept="application/pdf,.pdf" multiple>
+        <div id="esc-sel" style="font-size:12px;color:#666;margin-top:4px"></div></div>
       <div><button class="btn" id="esc-gerar">Gerar resumo</button></div>
       <div><button class="btn secundario" id="esc-efetivo">👥 Efetivo / nomes de guerra</button></div>
     </div>
+    <div style="font-size:12px;color:#888;margin:2px 0 6px">Dica: no seletor, segure <b>Ctrl</b> e clique nos dois arquivos. Se você não anexar a escala da P2, uso a última que já foi anexada para aquele mês.</div>
     <div id="esc-status" style="font-size:13px;color:#666;margin:8px 0;line-height:1.5"></div>
     <div id="esc-pend"></div>
     <div id="esc-saida"></div>`;
   document.getElementById('esc-efetivo').addEventListener('click', ()=>escAbrirEfetivo());
   document.getElementById('esc-gerar').addEventListener('click', escGerar);
+  document.getElementById('esc-arq').addEventListener('change', e=>{
+    const fs = Array.from(e.target.files||[]);
+    document.getElementById('esc-sel').textContent = fs.length ? fs.length+' arquivo(s): '+fs.map(f=>f.name).join(' • ') : '';
+  });
 }
 
 async function escGerar(){
@@ -607,7 +665,7 @@ async function escGerar(){
       if(d.tipo === 'p2_mensal'){
         const key = d.p2.ano+'-'+String(d.p2.mes).padStart(2,'0');
         ESC.p2[key] = d.p2;
-        linhas.push(`✅ ${esc(f.name)} — escala mensal da P2 (${String(d.p2.mes).padStart(2,'0')}/${d.p2.ano})`);
+        linhas.push(`✅ ${esc(f.name)} — escala mensal da P2 (${String(d.p2.mes).padStart(2,'0')}/${d.p2.ano})${d.p2.salvo ? ' — salva para os próximos dias' : ' — não foi salva (sem permissão de edição no P3)'}`);
         if((d.p2.nao_encontrados||[]).length) linhas.push(`⚠️ P2 sem cadastro no efetivo: ${esc(d.p2.nao_encontrados.join(', '))} (usei “SGT”). Cadastre em 👥 Efetivo.`);
       } else {
         const dia = { data: d.data || '', blocos: d.blocos, texto:'', editando:false, editado:false };
@@ -617,6 +675,18 @@ async function escGerar(){
         linhas.push(`✅ ${esc(f.name)} — escala diária ${esc(escDiaTitulo(dia.data))}`);
       }
     }catch(e){ linhas.push(`❌ ${esc(f.name)} — ${esc(e.message)}`); }
+  }
+  // meses das escalas diárias que ficaram sem P2 anexada agora: reaproveita a última salva
+  const faltam = [...new Set(ESC.dias.map(d=>String(d.data||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].filter(m=>!ESC.p2[m]);
+  if(faltam.length){
+    try{
+      const r = await apiEscala('escalaP2Obter', {meses:faltam});
+      Object.keys(r.p2||{}).forEach(k=>{
+        ESC.p2[k] = Object.assign({}, r.p2[k], {doBanco:true});
+        const quando = r.p2[k].atualizado_em ? new Date(r.p2[k].atualizado_em).toLocaleDateString('pt-BR') : '';
+        linhas.push(`ℹ️ P2 de ${k.slice(5)}/${k.slice(0,4)}: usei a escala que já estava salva${quando ? ' (anexada em '+quando+')' : ''}, porque você não anexou a planilha da P2 desta vez.`);
+      });
+    }catch(e){ linhas.push(`⚠️ Não consegui buscar a escala da P2 salva: ${esc(e.message)}`); }
   }
   ESC.dias.sort((a,b)=>String(a.data).localeCompare(String(b.data)));
   escRefazerNaoEditados();
