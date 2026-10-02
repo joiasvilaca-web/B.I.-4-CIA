@@ -1199,7 +1199,7 @@ function printPagina(css){
 }
 
 let OS = { modo:'lista', podeEditar:false, listas:{}, temasUsados:[], lista:[], busca:'', id:null, numero:1, ano:new Date().getFullYear(),
-  titulo:'', sigilo:'sem', data_evento:'', temas:[], d:null, salva:true, aviso:'', semana:false, listaAba:'distribuicao' };
+  titulo:'', sigilo:'sem', data_evento:'', temas:[], d:null, salva:true, aviso:'', semana:false, listaAba:'distribuicao', tipo:'', modelos:[], tipos:[], filtroTipo:'', modoModelo:null };
 const OS_MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const OS_TIPOS = {
   distribuicao:['Distribuição (quem recebe)','Texto',''],
@@ -1308,24 +1308,24 @@ function osSujo(){ OS.salva = false; const s=document.getElementById('os-sujo');
 // ---------- abertura ----------
 async function renderAreaOS(areaId, acesso){
   osInjetarCss();
-  OS = Object.assign(OS, { modo:'lista', podeEditar:acesso==='edit', listas:{}, lista:[], busca:'', id:null, d:null, salva:true, aviso:'' });
+  OS = Object.assign(OS, { modo:'lista', podeEditar:acesso==='edit', listas:{}, lista:[], busca:'', id:null, d:null, salva:true, aviso:'', filtroTipo:'', modoModelo:null, tipo:'' });
   const box = document.getElementById('area-corpo');
   box.innerHTML = '<div class="carregando">Carregando…</div>';
   try{
-    const l = await apiOS('osListas'); OS.listas = l.listas; OS.temasUsados = l.temasUsados||[]; OS.podeEditar = !!l.podeEditar;
+    const l = await apiOS('osListas'); OS.listas = l.listas; OS.modelos = l.modelos||[]; OS.tipos = l.tipos||[]; OS.temasUsados = l.temasUsados||[]; OS.podeEditar = !!l.podeEditar;
     await osCarregarLista('');
   }catch(e){ box.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p>`; }
 }
 async function osCarregarLista(busca){
   OS.busca = busca||''; OS.modo = 'lista';
-  const r = await apiOS('osListar', {busca:OS.busca}); OS.lista = r.os;
+  const r = await apiOS('osListar', {busca:OS.busca, tipo:OS.filtroTipo}); OS.lista = r.os;
   osRenderLista();
 }
 function osRenderLista(){
   const box = document.getElementById('area-corpo'); if(!box) return;
   const linhas = OS.lista.map(o=>`<tr>
     <td style="white-space:nowrap"><b>${osNum(o.numero)}/${o.ano}</b></td>
-    <td>${esc(o.titulo)}${o.sigilo==='com' ? ' <span style="background:#c00;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:bold">SIGILOSO</span>' : ''}</td>
+    <td>${esc(o.titulo)}${o.sigilo==='com' ? ' <span style="background:#c00;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:bold">SIGILOSO</span>' : ''}${o.tipo ? '<div style="font-size:11px;color:#777">'+esc(o.tipo)+'</div>' : ''}</td>
     <td style="white-space:nowrap">${esc(osDataBR(o.data_evento))}</td>
     <td>${(o.temas||[]).map(t=>`<span class="os-tema" style="padding:2px 9px">${esc(t)}</span>`).join('')}</td>
     <td style="white-space:nowrap"><button class="btn secundario" style="padding:3px 10px" onclick="osAbrir(${o.id})">Abrir</button>
@@ -1334,30 +1334,48 @@ function osRenderLista(){
     <div class="filtros" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
       <div style="min-width:380px;flex:1"><label>Buscar O.S. (número, título, tema ou qualquer texto)</label>
         <input type="text" id="os-busca" value="${esc(OS.busca)}" placeholder="ex.: motociata, explosivo, 3.041, aeroporto…" onkeydown="if(event.key==='Enter') osBuscar()"></div>
+      <div><label>Tipo</label><select onchange="osFiltrarTipo(this.value)"><option value="">Todos</option>${(OS.tipos||[]).map(t=>`<option value="${esc(t)}" ${t===OS.filtroTipo?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
       <div><button class="btn secundario" onclick="osBuscar()">🔍 Buscar</button></div>
-      <div><button class="btn" onclick="osNova()" ${OS.podeEditar?'':'disabled title="Seu usuário só visualiza o P3"'}>＋ Nova O.S.</button></div>
+      <div><button class="btn" onclick="osEscolherModelo()" ${OS.podeEditar?'':'disabled title="Seu usuário só visualiza o P3"'}>＋ Nova O.S.</button></div>
+      <div><button class="btn secundario" onclick="osAbrirModelos()">📋 Tipos (modelos)</button></div>
       <div><button class="btn secundario" onclick="osAbrirListas()">⚙️ Listas</button></div>
     </div>
     <div style="font-size:12px;color:#777;margin:6px 0">${OS.lista.length} O.S. ${OS.busca ? 'encontrada(s) para “'+esc(OS.busca)+'”' : 'salva(s)'}.</div>
-    <table class="os-lista"><thead><tr><th>Nº</th><th>Título</th><th>Evento</th><th>Temas (só para busca)</th><th></th></tr></thead>
+    <table class="os-lista"><thead><tr><th>Nº</th><th>Título / tipo</th><th>Evento</th><th>Temas (só para busca)</th><th></th></tr></thead>
       <tbody>${linhas || '<tr><td colspan="5" style="color:#999">Nenhuma O.S. encontrada.</td></tr>'}</tbody></table>`;
 }
 function osBuscar(){ osCarregarLista((document.getElementById('os-busca')||{}).value||'').catch(e=>alert(e.message)); }
 
-async function osNova(base){
+function osFiltrarTipo(v){ OS.filtroTipo = v; osCarregarLista(OS.busca).catch(e=>alert(e.message)); }
+function osEscolherModelo(){
+  const cartoes = (OS.modelos||[]).map(m=>`<div class="os-card" style="margin:8px 0;display:flex;gap:10px;align-items:center;justify-content:space-between">
+      <div><b>${esc(m.nome)}</b> ${m.sigilo==='com' ? '<span style="background:#c00;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:bold">SIGILOSO</span>' : ''}<div style="font-size:12px;color:#666">${esc(m.descricao||'')}</div></div>
+      <button class="btn" style="padding:4px 14px" onclick="osNovaCom(${m.id})">Usar</button></div>`).join('');
+  abrirModal(`<h3 style="margin-top:0">Nova O.S. — escolha o tipo</h3>
+    <div style="max-height:56vh;overflow:auto">
+      <div class="os-card" style="margin:8px 0;display:flex;gap:10px;align-items:center;justify-content:space-between"><div><b>📄 Em branco</b><div style="font-size:12px;color:#666">Estrutura padrão (Evento, Objetivo, Atribuições, Recursos), sem tipo definido.</div></div><button class="btn secundario" style="padding:4px 14px" onclick="osNovaCom(0)">Usar</button></div>
+      ${cartoes || '<div style="color:#999;font-size:13px">Nenhum tipo cadastrado ainda.</div>'}
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:12px"><button class="btn secundario" onclick="osAbrirModelos()">📋 Gerenciar tipos</button><button class="btn secundario" onclick="fecharModal()">Cancelar</button></div>`);
+}
+async function osNovaCom(id){
+  const m = id ? (OS.modelos||[]).find(x=>x.id===id) : null; fecharModal();
+  await osNovaDe(m ? {titulo:'', tipo:m.nome, sigilo:m.sigilo, temas:[], d:m.dados, aviso:'Criada a partir do tipo “'+m.nome+'”. Preencha o título, a data e os campos entre [colchetes].'} : {titulo:'', tipo:'', sigilo:'sem', temas:[], d:null});
+}
+async function osNovaDe(base){
   try{
     const ano = new Date().getFullYear();
     const p = await apiOS('osProximo', {ano});
-    OS.id = null; OS.ano = ano; OS.numero = p.numero;
-    if(base){ OS.titulo = base.titulo+' (cópia)'; OS.sigilo = base.sigilo; OS.data_evento = ''; OS.temas = base.temas.slice(); OS.d = osNormalizar(base.d); OS.aviso = 'Cópia criada com um novo número. Ajuste e salve.'; }
-    else { OS.titulo=''; OS.sigilo='sem'; OS.data_evento=''; OS.temas=[]; OS.d=osNovoDoc(); OS.aviso=''; }
+    OS.id = null; OS.modoModelo = null; OS.ano = ano; OS.numero = p.numero;
+    OS.titulo = base.titulo||''; OS.tipo = base.tipo||''; OS.sigilo = base.sigilo||'sem'; OS.data_evento = '';
+    OS.temas = (base.temas||[]).slice(); OS.d = base.d ? osNormalizar(base.d) : osNovoDoc(); OS.aviso = base.aviso||'';
     OS.salva = false; OS.modo = 'form'; osRenderForm();
   }catch(e){ alert(e.message); }
 }
 async function osAbrir(id, gerar){
   try{
     const r = await apiOS('osObter', {id}); const o = r.os;
-    OS.id = o.id; OS.numero = o.numero; OS.ano = o.ano; OS.titulo = o.titulo; OS.sigilo = o.sigilo; OS.data_evento = o.data_evento||'';
+    OS.id = o.id; OS.modoModelo = null; OS.numero = o.numero; OS.ano = o.ano; OS.titulo = o.titulo; OS.tipo = o.tipo||''; OS.sigilo = o.sigilo; OS.data_evento = o.data_evento||'';
     OS.temas = Array.isArray(o.temas) ? o.temas.slice() : []; OS.d = osNormalizar(o.dados); OS.salva = true; OS.aviso = ''; OS.modo = 'form';
     osRenderForm();
     if(gerar) osGerar();
@@ -1365,6 +1383,7 @@ async function osAbrir(id, gerar){
 }
 async function osVoltar(){
   if(!OS.salva && OS.podeEditar && !confirm('Há alterações não salvas. Voltar para a lista mesmo assim?')) return;
+  OS.modoModelo = null; OS.salva = true;
   try{ await osCarregarLista(OS.busca); }catch(e){ alert(e.message); }
 }
 
@@ -1392,6 +1411,55 @@ function osFrasesSelect(path, resp){
   if(!lista.length) return '';
   return `<select onchange="osAddFrase('${path}',this)"><option value="">＋ frase padrão…</option>${lista.map(f=>`<option value="${esc(f.valor)}">${esc(f.valor.slice(0,70))}</option>`).join('')}</select>`;
 }
+function osHtmlTopo(){
+  const M = OS.modoModelo, pode = OS.podeEditar;
+  if(M) return `<div class="filtros" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+      <div><button class="btn secundario" onclick="osVoltar()">← Voltar</button></div>
+      <div><button class="btn" onclick="osSalvarModelo()" ${pode?'':'disabled title="Seu usuário só visualiza o P3"'}>💾 Salvar modelo</button></div>
+      <div id="os-msg" style="font-size:13px;color:#2a7a2a"></div></div>
+    <div style="background:#e8f0fb;border:1px solid #9bb5dd;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px">📋 Você está editando o <b>modelo</b> “${esc(M.nome||'novo tipo')}”. O que você preencher aqui vira a base das novas O.S. desse tipo. Use <b>[campos entre colchetes]</b> para o que muda a cada O.S.</div>`;
+  return `<div class="filtros" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
+      <div><button class="btn secundario" onclick="osVoltar()">← Lista de O.S.</button></div>
+      <div><button class="btn" onclick="osSalvar()" ${OS.podeEditar?'':'disabled title="Seu usuário só visualiza o P3"'}>💾 Salvar</button></div>
+      <div><button class="btn" style="background:#2c4870" onclick="osGerar()">📄 Gerar O.S.</button></div>
+      <div><button class="btn secundario" onclick="osDuplicar()" ${OS.podeEditar?'':'disabled'}>⧉ Duplicar</button></div>
+      <div><button class="btn secundario" style="color:#a4202a" onclick="osExcluir()" ${OS.podeEditar && OS.id?'':'disabled'}>🗑 Excluir</button></div>
+      <div id="os-msg" style="font-size:13px;color:#2a7a2a"></div>
+    </div>`;
+}
+function osHtmlInicio(distChips){
+  const d = OS.d, M = OS.modoModelo;
+  const tipos = (OS.modelos||[]).map(m=>m.nome); if(OS.tipo && !tipos.includes(OS.tipo)) tipos.push(OS.tipo);
+  return `<div class="os-card"><h4>${M ? 'Modelo (tipo de O.S.)' : 'Início'}</h4>
+    ${M ? `<div class="os-row"><input type="text" style="width:420px;max-width:100%" placeholder="Nome do tipo (ex.: Operação conjunta)" value="${esc(M.nome)}" oninput="OS.modoModelo.nome=this.value;osSujo()">
+        <input type="text" style="width:520px;max-width:100%" placeholder="Descrição curta (opcional)" value="${esc(M.descricao)}" oninput="OS.modoModelo.descricao=this.value;osSujo()"></div>` : ''}
+    <div class="os-row os-sigilo"><b style="font-size:13px">Tipo de sigilo:</b>
+      <button class="${OS.sigilo==='sem'?'on-sem':''}" onclick="osSetCab('sigilo','sem')">Sem sigilo</button>
+      <button class="${OS.sigilo==='com'?'on-com':''}" onclick="osSetCab('sigilo','com')">Com sigilo (SIGILOSO)</button></div>
+    ${M ? '' : `<div class="os-row"><b style="font-size:13px">Ordem de Serviço nº 3.</b><input type="number" min="1" max="9999" style="width:80px" value="${OS.numero}" oninput="osSetCab('numero',this.value)">
+        <b>/</b><input type="number" min="2000" max="2100" style="width:90px" value="${OS.ano}" oninput="osSetCab('ano',this.value)">
+        <span style="font-size:12px;color:#777">→ ${osNum(OS.numero)} / ${OS.ano} – 4ª Cia PM Ind GER</span></div>
+      <div class="os-row"><input type="text" style="width:520px;max-width:100%" placeholder="Título da O.S. (ex.: OPERAÇÃO FICCO)" value="${esc(OS.titulo)}" oninput="osSetCab('titulo',this.value)">
+        📅 Data do evento <input type="date" value="${esc(OS.data_evento)}" onchange="osSetCab('data_evento',this.value)"></div>
+      <div class="os-row"><b style="font-size:13px">Tipo de O.S.:</b><select style="min-width:320px" onchange="osSetCab('tipo',this.value)"><option value="">(sem tipo)</option>${tipos.map(t=>`<option ${t===OS.tipo?'selected':''}>${esc(t)}</option>`).join('')}</select>
+        <button class="os-add" onclick="osAbrirSalvarModelo()" ${OS.podeEditar?'':'disabled'}>📋 Salvar como modelo</button></div>`}
+    <div style="margin-top:6px"><span style="font-size:13px;font-weight:bold">Distribuição:</span>
+      ${distChips.map(v=>`<span class="os-chip ${d.distribuicao.includes(v)?'on':''}" onclick="osToggleDist(this.dataset.v)" data-v="${esc(v)}">${esc(v)}</span>`).join('')}
+      <span class="os-add" style="padding:2px 10px" onclick="osAddDist()">＋ outro</span></div></div>`;
+}
+function osHtmlTemas(){
+  if(OS.modoModelo) return '';
+  return `<div class="os-card" style="background:#f7f9fc;border-style:dashed"><h4>🔎 Temas desta O.S. <span style="font-weight:normal;font-size:12px;color:#777">— ficam só para a busca; <b>não aparecem na O.S.</b></span></h4>
+      <div>${OS.temas.map((t,i)=>`<span class="os-tema">${esc(t)} <b title="Remover" onclick="osRemTema(${i})">✖</b></span>`).join('') || '<span style="font-size:12px;color:#999">Nenhum tema ainda.</span>'}</div>
+      <div class="os-row" style="margin-top:8px"><input type="text" id="os-tema-in" list="os-temas-sug" style="width:300px" placeholder="Escreva um tema e tecle Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();osAddTema();}">
+        <datalist id="os-temas-sug">${(OS.temasUsados||[]).map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+        <button class="os-add" onclick="osAddTema()">＋ Incluir tema</button></div></div>`;
+}
+function osHtmlRodape(){
+  if(OS.modoModelo) return `<div style="margin:14px 0"><button class="btn" onclick="osSalvarModelo()" ${OS.podeEditar?'':'disabled'}>💾 Salvar modelo</button></div>`;
+  return `<div style="margin:14px 0;display:flex;gap:10px"><button class="btn" onclick="osSalvar()" ${OS.podeEditar?'':'disabled'}>💾 Salvar</button><button class="btn" style="background:#2c4870" onclick="osGerar()">📄 Gerar O.S.</button></div>`;
+}
+
 function osRenderForm(){
   const box = document.getElementById('area-corpo'); if(!box) return;
   const d = OS.d, S = osNumSecao();
@@ -1414,30 +1482,11 @@ function osRenderForm(){
       ${(it.passos||[]).map((p,j)=>`<div class="os-row"><span class="os-num">●</span><input type="text" style="width:640px;max-width:100%" value="${esc(p)}" oninput="osPasso(${i},${j},this.value)"><button class="os-x" onclick="osRemPasso(${i},${j})">🗑</button></div>`).join('')}
       <button class="os-add" onclick="osAddPasso(${i})">＋ Incluir passo</button></div>`).join('');
   box.innerHTML = `
-    <div class="filtros" style="align-items:flex-end;gap:10px;flex-wrap:wrap">
-      <div><button class="btn secundario" onclick="osVoltar()">← Lista de O.S.</button></div>
-      <div><button class="btn" onclick="osSalvar()" ${OS.podeEditar?'':'disabled title="Seu usuário só visualiza o P3"'}>💾 Salvar</button></div>
-      <div><button class="btn" style="background:#2c4870" onclick="osGerar()">📄 Gerar O.S.</button></div>
-      <div><button class="btn secundario" onclick="osDuplicar()" ${OS.podeEditar?'':'disabled'}>⧉ Duplicar</button></div>
-      <div><button class="btn secundario" style="color:#a4202a" onclick="osExcluir()" ${OS.podeEditar && OS.id?'':'disabled'}>🗑 Excluir</button></div>
-      <div id="os-msg" style="font-size:13px;color:#2a7a2a"></div>
-    </div>
+    ${osHtmlTopo()}
     ${OS.aviso ? `<div style="background:#fff6d6;border:1px solid #e6cf72;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px">ℹ️ ${esc(OS.aviso)}</div>` : ''}
     <div id="os-sujo" style="font-size:12px;color:#a4202a;margin:4px 0;display:${OS.salva?'none':'block'}">● Alterações ainda não salvas</div>
 
-    <div class="os-card"><h4>Início</h4>
-      <div class="os-row os-sigilo"><b style="font-size:13px">Tipo de sigilo:</b>
-        <button class="${OS.sigilo==='sem'?'on-sem':''}" onclick="osSetCab('sigilo','sem')">Sem sigilo</button>
-        <button class="${OS.sigilo==='com'?'on-com':''}" onclick="osSetCab('sigilo','com')">Com sigilo (SIGILOSO)</button></div>
-      <div class="os-row"><b style="font-size:13px">Ordem de Serviço nº 3.</b><input type="number" min="1" max="9999" style="width:80px" value="${OS.numero}" oninput="osSetCab('numero',this.value)">
-        <b>/</b><input type="number" min="2000" max="2100" style="width:90px" value="${OS.ano}" oninput="osSetCab('ano',this.value)">
-        <span style="font-size:12px;color:#777">→ ${osNum(OS.numero)} / ${OS.ano} – 4ª Cia PM Ind GER</span></div>
-      <div class="os-row"><input type="text" style="width:520px;max-width:100%" placeholder="Título da O.S. (ex.: OPERAÇÃO FICCO)" value="${esc(OS.titulo)}" oninput="osSetCab('titulo',this.value)">
-        📅 Data do evento <input type="date" value="${esc(OS.data_evento)}" onchange="osSetCab('data_evento',this.value)"></div>
-      <div style="margin-top:6px"><span style="font-size:13px;font-weight:bold">Distribuição:</span>
-        ${distChips.map(v=>`<span class="os-chip ${d.distribuicao.includes(v)?'on':''}" onclick="osToggleDist(this.dataset.v)" data-v="${esc(v)}">${esc(v)}</span>`).join('')}
-        <span class="os-add" style="padding:2px 10px" onclick="osAddDist()">＋ outro</span></div>
-    </div>
+    ${osHtmlInicio(distChips)}
 
     ${osCardItens('EVENTO','evento',d.evento,S.evento)}
     ${osCardItens('OBJETIVO','objetivo',d.objetivo,S.objetivo)}
@@ -1457,13 +1506,9 @@ function osRenderForm(){
       ${d.usaPrescricoes ? '<button class="os-add" onclick="osAddItem(\'prescricoes\')">＋ Incluir</button>' : ''}</h4>
       ${d.usaPrescricoes ? (d.prescricoes.map((it,i)=>osItemHtml('prescricoes',i,it)).join('') || '<div style="font-size:12px;color:#999">Nada incluído.</div>') : '<div style="font-size:12px;color:#999">Marque a caixa para incluir esta seção.</div>'}</div>
 
-    <div class="os-card" style="background:#f7f9fc;border-style:dashed"><h4>🔎 Temas desta O.S. <span style="font-weight:normal;font-size:12px;color:#777">— ficam só para a busca; <b>não aparecem na O.S.</b></span></h4>
-      <div>${OS.temas.map((t,i)=>`<span class="os-tema">${esc(t)} <b title="Remover" onclick="osRemTema(${i})">✖</b></span>`).join('') || '<span style="font-size:12px;color:#999">Nenhum tema ainda.</span>'}</div>
-      <div class="os-row" style="margin-top:8px"><input type="text" id="os-tema-in" list="os-temas-sug" style="width:300px" placeholder="Escreva um tema e tecle Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();osAddTema();}">
-        <datalist id="os-temas-sug">${(OS.temasUsados||[]).map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
-        <button class="os-add" onclick="osAddTema()">＋ Incluir tema</button></div></div>
+    ${osHtmlTemas()}
 
-    <div style="margin:14px 0;display:flex;gap:10px"><button class="btn" onclick="osSalvar()" ${OS.podeEditar?'':'disabled'}>💾 Salvar</button><button class="btn" style="background:#2c4870" onclick="osGerar()">📄 Gerar O.S.</button></div>`;
+    ${osHtmlRodape()}`;
 }
 
 // ---------- edições ----------
@@ -1548,9 +1593,9 @@ async function osSalvar(silencioso){
   if(!(OS.titulo||'').trim()){ alert('Informe o título da O.S.'); return false; }
   osLimpo();
   try{
-    const r = await apiOS('osSalvar', {id:OS.id, numero:OS.numero, ano:OS.ano, titulo:OS.titulo, sigilo:OS.sigilo, data_evento:OS.data_evento, temas:OS.temas, dados:Object.assign({}, OS.d, {sigilo:OS.sigilo})});
+    const r = await apiOS('osSalvar', {id:OS.id, numero:OS.numero, ano:OS.ano, titulo:OS.titulo, tipo:OS.tipo, sigilo:OS.sigilo, data_evento:OS.data_evento, temas:OS.temas, dados:Object.assign({}, OS.d, {sigilo:OS.sigilo})});
     OS.id = r.id; OS.salva = true; OS.aviso = '';
-    try{ const l = await apiOS('osListas'); OS.temasUsados = l.temasUsados||[]; }catch(e){}
+    try{ const l = await apiOS('osListas'); OS.temasUsados = l.temasUsados||[]; OS.tipos = l.tipos||OS.tipos; }catch(e){}
     osRenderForm();
     if(!silencioso){ const b=document.getElementById('os-msg'); if(b){ b.textContent='✅ O.S. salva.'; setTimeout(()=>{ if(b) b.textContent=''; }, 2500); } }
     return true;
@@ -1558,7 +1603,7 @@ async function osSalvar(silencioso){
 }
 async function osDuplicar(){
   if(!confirm('Criar uma nova O.S. com o mesmo conteúdo (novo número)?')) return;
-  await osNova({titulo:OS.titulo, sigilo:OS.sigilo, temas:OS.temas, d:OS.d});
+  await osNovaDe({titulo:OS.titulo+' (cópia)', tipo:OS.tipo, sigilo:OS.sigilo, temas:OS.temas, d:OS.d, aviso:'Cópia criada com um novo número. Ajuste e salve.'});
 }
 async function osExcluir(){
   if(!OS.id) return;
@@ -1621,7 +1666,18 @@ function osHtmlDoc(B){
   if(OS.sigilo==='com') h = `<table class="os-wrap"><thead><tr><td><img src="${OS_SELO}" style="height:11.7mm"></td></tr></thead><tbody><tr><td>${h}</td></tr></tbody></table>`;
   return `<div class="os-doc">${h}</div>`;
 }
+function osPlaceholders(){
+  const d = OS.d, t = [OS.titulo];
+  [d.evento, d.objetivo, d.prescricoes].forEach(a=>(a||[]).forEach(it=>{ if(it.t!=='img') t.push(it.v); }));
+  (d.atribuicoes||[]).forEach(a=>(a.itens||[]).forEach(it=>{ if(it.t!=='img') t.push(it.v); }));
+  (d.recursos||[]).forEach(r=>t.push(r));
+  (d.itinerarios||[]).forEach(i=>{ t.push(i.titulo, i.local); (i.passos||[]).forEach(p=>t.push(p)); });
+  const ach = []; t.forEach(x=>{ (String(x||'').match(/\[[^\]\n]{1,60}\]/g)||[]).forEach(m=>{ if(!ach.includes(m)) ach.push(m); }); });
+  return ach;
+}
 async function osGerar(){
+  const fal = osPlaceholders();
+  if(fal.length && !confirm('Ainda há campos entre [colchetes] sem preencher:\n\n'+fal.slice(0,8).join('\n')+(fal.length>8?'\n…':'')+'\n\nGerar a O.S. mesmo assim?')) return;
   if(OS.podeEditar && !OS.salva){ if(!(OS.titulo||'').trim()){ alert('Informe o título da O.S. antes de gerar.'); return; } const ok = await osSalvar(true); if(!ok) return; }
   else osLimpo();
   osInjetarCss();
@@ -1751,6 +1807,85 @@ async function osListaExcluir(i){
 }
 async function osListaNovo(){
   try{ await apiOS('osListaSalvar', {tipo:OS.listaAba, valor:document.getElementById('ol-nv').value, extra:(document.getElementById('ol-ne')||{}).value||''}); await osRecarregarListas(); osAbrirListas(); }catch(e){ alert(e.message); }
+}
+
+// ---------- tipos de O.S. (modelos) ----------
+async function osRecarregarModelos(){
+  const l = await apiOS('osListas');
+  OS.listas = l.listas; OS.modelos = l.modelos||[]; OS.tipos = l.tipos||[]; OS.temasUsados = l.temasUsados||[];
+}
+function osAbrirSalvarModelo(){
+  if(!OS.podeEditar) return;
+  abrirModal(`<h3 style="margin-top:0">📋 Salvar como modelo</h3>
+    <div style="font-size:13px;color:#555;margin-bottom:8px">O conteúdo desta O.S. (textos, atribuições, recursos, itinerário…) vira a base de um <b>tipo de O.S.</b>. Troque o que for específico por <b>[campos entre colchetes]</b> depois, em 📋 Tipos (modelos) → ✏️ Conteúdo.</div>
+    <div class="os-row"><input type="text" id="om-nome" style="width:100%;max-width:100%" placeholder="Nome do tipo (ex.: Evento esportivo)" value="${esc(OS.tipo||'')}"></div>
+    <div class="os-row"><input type="text" id="om-desc" style="width:100%;max-width:100%" placeholder="Descrição curta (opcional)"></div>
+    <div style="text-align:right;margin-top:12px"><button class="btn secundario" onclick="fecharModal()">Cancelar</button> <button class="btn" onclick="osConfirmarSalvarModelo()">Salvar modelo</button></div>`);
+}
+async function osConfirmarSalvarModelo(){
+  const nome = (document.getElementById('om-nome').value||'').trim(), desc = (document.getElementById('om-desc').value||'').trim();
+  if(!nome){ alert('Informe o nome do tipo.'); return; }
+  const ja = (OS.modelos||[]).find(m=>m.nome.toLowerCase()===nome.toLowerCase());
+  if(ja && !confirm('Já existe o tipo “'+ja.nome+'”. Substituir o modelo dele por esta O.S.?')) return;
+  osLimpo();
+  try{
+    await apiOS('osModeloSalvar', {id: ja ? ja.id : undefined, nome: ja ? ja.nome : nome, descricao: desc || (ja ? ja.descricao : ''), sigilo:OS.sigilo, dados:OS.d});
+    await osRecarregarModelos(); OS.tipo = ja ? ja.nome : nome; osSujo(); fecharModal(); osRenderForm();
+    const b = document.getElementById('os-msg'); if(b){ b.textContent = '✅ Modelo “'+OS.tipo+'” salvo. Clique em Salvar para gravar o tipo nesta O.S.'; }
+  }catch(e){ alert(e.message); }
+}
+function osAbrirModelos(){
+  const pode = OS.podeEditar, ms = OS.modelos||[];
+  abrirModal(`<h3 style="margin-top:0">📋 Tipos de O.S. (modelos)</h3>
+    <div style="font-size:12px;color:#666;margin-bottom:8px">Cada tipo é um modelo: ao criar uma nova O.S. você escolhe o tipo e ela já vem montada.</div>
+    <div style="max-height:50vh;overflow:auto">${ms.map((m,i)=>`<div class="os-card" style="margin:8px 0">
+        <div class="os-row"><input type="text" id="om-n-${i}" value="${esc(m.nome)}" style="width:360px;max-width:100%" ${pode?'':'disabled'}>
+          <input type="text" id="om-d-${i}" value="${esc(m.descricao||'')}" placeholder="Descrição" style="width:340px;max-width:100%" ${pode?'':'disabled'}></div>
+        <div class="os-row">${pode ? `<button class="btn secundario" style="padding:3px 10px" onclick="osModeloRenomear(${i})">Salvar nome</button>
+          <button class="btn" style="padding:3px 10px;background:#2c4870" onclick="osModeloEditar(${m.id})">✏️ Conteúdo</button>
+          <button class="btn secundario" style="padding:3px 10px" onclick="osModeloDuplicar(${i})">⧉ Duplicar</button>
+          <button class="os-x" onclick="osModeloExcluir(${i})">🗑</button>` : ''}
+          <span style="font-size:11px;color:#888">${m.sigilo==='com' ? 'com sigilo' : 'sem sigilo'}</span></div></div>`).join('') || '<div style="color:#999;font-size:13px">Nenhum tipo cadastrado.</div>'}</div>
+    ${pode ? `<div class="os-row" style="margin-top:10px;border-top:1px solid #eee;padding-top:10px"><input type="text" id="om-novo" placeholder="Novo tipo (nome)" style="width:360px;max-width:100%">
+      <button class="btn" style="padding:4px 12px" onclick="osModeloNovo()">＋ Novo tipo em branco</button></div>
+      <div style="font-size:11px;color:#888;margin-top:4px">Também dá para criar um tipo a partir de uma O.S. pronta: abra a O.S. e clique em “📋 Salvar como modelo”.</div>` : '<div style="font-size:12px;color:#888;margin-top:8px">Seu usuário só visualiza os tipos.</div>'}
+    <div style="text-align:right;margin-top:12px"><button class="btn secundario" onclick="fecharModal(); if(OS.modo==='lista') osRenderLista(); else if(OS.modo==='form') osRenderForm();">Fechar</button></div>`);
+}
+async function osModeloRenomear(i){
+  const m = (OS.modelos||[])[i]; if(!m) return;
+  try{ await apiOS('osModeloSalvar', {id:m.id, nome:document.getElementById('om-n-'+i).value, descricao:document.getElementById('om-d-'+i).value, sigilo:m.sigilo, dados:m.dados}); await osRecarregarModelos(); osAbrirModelos(); }catch(e){ alert(e.message); }
+}
+async function osModeloDuplicar(i){
+  const m = (OS.modelos||[])[i]; if(!m) return;
+  try{ await apiOS('osModeloSalvar', {nome:m.nome+' (cópia)', descricao:m.descricao, sigilo:m.sigilo, dados:m.dados}); await osRecarregarModelos(); osAbrirModelos(); }catch(e){ alert(e.message); }
+}
+async function osModeloExcluir(i){
+  const m = (OS.modelos||[])[i]; if(!m) return;
+  if(!confirm('Excluir o tipo “'+m.nome+'”? As O.S. já criadas continuam como estão.')) return;
+  try{ await apiOS('osModeloExcluir', {id:m.id}); await osRecarregarModelos(); osAbrirModelos(); }catch(e){ alert(e.message); }
+}
+function osModeloEditar(id){
+  const m = (OS.modelos||[]).find(x=>x.id===id); if(!m) return;
+  OS.modoModelo = {id:m.id, nome:m.nome, descricao:m.descricao||''}; OS.d = osNormalizar(m.dados); OS.sigilo = m.sigilo;
+  OS.salva = true; OS.aviso = ''; OS.modo = 'form'; fecharModal(); osRenderForm();
+}
+function osModeloNovo(){
+  const nome = (document.getElementById('om-novo').value||'').trim();
+  if(!nome){ alert('Digite o nome do novo tipo.'); return; }
+  if((OS.modelos||[]).some(m=>m.nome.toLowerCase()===nome.toLowerCase())){ alert('Já existe um tipo com esse nome.'); return; }
+  OS.modoModelo = {id:null, nome, descricao:''}; OS.d = osNovoDoc(); OS.sigilo = 'sem';
+  OS.salva = false; OS.aviso = ''; OS.modo = 'form'; fecharModal(); osRenderForm();
+}
+async function osSalvarModelo(){
+  const M = OS.modoModelo; if(!M) return;
+  if(!OS.podeEditar){ alert('Seu usuário só pode visualizar o P3.'); return; }
+  if(!(M.nome||'').trim()){ alert('Informe o nome do tipo.'); return; }
+  osLimpo();
+  try{
+    const r = await apiOS('osModeloSalvar', {id:M.id||undefined, nome:M.nome, descricao:M.descricao, sigilo:OS.sigilo, dados:OS.d});
+    M.id = r.id; OS.salva = true; await osRecarregarModelos(); osRenderForm();
+    const b = document.getElementById('os-msg'); if(b){ b.textContent = '✅ Modelo salvo.'; setTimeout(()=>{ if(b) b.textContent=''; }, 2500); }
+  }catch(e){ alert(e.message); }
 }
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
