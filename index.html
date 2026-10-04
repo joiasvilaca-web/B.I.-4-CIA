@@ -367,6 +367,7 @@ async function renderArea(areaId, opts={}){
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='escala'?'ativo':''}" data-tab="escala">📋 Escala</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='carta'?'ativo':''}" data-tab="carta">📄 Carta de Situação</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='os'?'ativo':''}" data-tab="os">📑 O.S.</div>` : ''}
+      ${areaId==='P5' ? `<div class="tab-area ${abaArea==='aniversario'?'ativo':''}" data-tab="aniversario">🎂 Aniversários</div>` : ''}
     </div>
     <div id="area-corpo"><div class="carregando">Carregando…</div></div>
   `;
@@ -377,6 +378,7 @@ async function renderArea(areaId, opts={}){
   if(abaArea==='escala' && areaId==='P3') return renderAreaEscala(areaId, acesso);
   if(abaArea==='carta' && areaId==='P3') return renderAreaCarta(areaId, acesso);
   if(abaArea==='os' && areaId==='P3') return renderAreaOS(areaId, acesso);
+  if(abaArea==='aniversario' && areaId==='P5') return renderAreaAniversario(areaId, acesso);
 
   let d;
   try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
@@ -808,6 +810,124 @@ async function escSalvarEfetivo(i){
     escRefazerNaoEditados();
     const b = document.getElementById('ef-ng-'+i); b.style.background = '#e4f5e4';
   }catch(e){ alert(e.message); }
+}
+
+// ================= ABA ANIVERSÁRIOS (P5) =================
+const ANIVERSARIO_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-aniversario";
+async function apiAniversario(op, params={}){
+  const r = await fetch(ANIVERSARIO_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify({op, token: ST.token, ...params})
+  });
+  const d = await r.json();
+  if(!d.ok){ throw new Error(d.erro || 'Erro desconhecido'); }
+  return d;
+}
+let ANV = { militares: [], acesso: 'view' };
+
+async function renderAreaAniversario(areaId, acesso){
+  ANV.acesso = acesso;
+  const box = document.getElementById('area-corpo');
+  box.innerHTML = `
+    <div class="filtros">
+      <div style="min-width:260px"><label>Buscar por nome ou nome de guerra</label><input type="text" id="anv-busca" placeholder="Buscar..."></div>
+      <div><button class="btn secundario" id="anv-buscar">Buscar</button></div>
+      <div><button class="btn secundario" id="anv-config">⚙️ Configuração de disparo</button></div>
+    </div>
+    <div style="font-size:12px;color:#888;margin:2px 0 10px">Data e telefone usam o mesmo militar cadastrado em 👥 Efetivo (aba Escala). O envio automático ainda não está ativo nesta área — falta configurar a conexão de WhatsApp.</div>
+    <div id="anv-lista"><div class="carregando">Carregando…</div></div>
+  `;
+  document.getElementById('anv-buscar').addEventListener('click', ()=>anvCarregar(document.getElementById('anv-busca').value));
+  document.getElementById('anv-config').addEventListener('click', ()=>anvAbrirConfig());
+  anvCarregar('');
+}
+
+async function anvCarregar(busca){
+  const lista = document.getElementById('anv-lista');
+  try{
+    const d = await apiAniversario('aniversarioListar', {busca});
+    ANV.militares = d.militares;
+    const pode = ANV.acesso === 'edit';
+    lista.innerHTML = `<table><thead><tr><th>Patente</th><th>Nome completo</th><th>Nome de guerra</th><th>Aniversário</th><th>Telefone</th><th></th></tr></thead><tbody>
+      ${d.militares.map((m,i)=>`<tr><td>${esc(m.patente||'')}</td><td style="font-size:12px">${esc(m.nome_completo)}</td><td>${esc(m.nome_guerra||'')}</td>
+        <td>${esc(m.dataExibicao||'—')}</td><td>${esc(m.telefone||'—')}</td>
+        <td>${pode?`<button class="btn secundario" onclick="anvEditar(${i})">Editar</button>`:''}</td></tr>`).join('') || '<tr><td colspan="6" style="color:#999">Nada encontrado</td></tr>'}
+      </tbody></table>`;
+  }catch(e){ lista.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p>`; }
+}
+
+function anvEditar(i){
+  const m = ANV.militares[i]; if(!m) return;
+  abrirModal(`<h3 style="margin-top:0">🎂 ${esc(m.patente||'')} ${esc(m.nome_completo)}</h3>
+    <label>Data de aniversário (DD/MM)</label>
+    <input type="text" id="anv-ed-data" value="${esc(m.dataExibicao||'')}" placeholder="21/09">
+    <label>Telefone (com DDD)</label>
+    <input type="text" id="anv-ed-tel" value="${esc(m.telefone||'')}" placeholder="32999990000">
+    <div id="anv-ed-msg" style="color:#a4202a;font-size:13px;margin-top:6px"></div>
+    <div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn secundario" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" onclick="anvSalvar('${m.matricula}')">Salvar</button>
+    </div>`);
+}
+async function anvSalvar(matricula){
+  const data = document.getElementById('anv-ed-data').value;
+  const telefone = document.getElementById('anv-ed-tel').value;
+  const msg = document.getElementById('anv-ed-msg');
+  try{
+    await apiAniversario('aniversarioSalvar', {matricula, data, telefone});
+    fecharModal();
+    anvCarregar(document.getElementById('anv-busca') ? document.getElementById('anv-busca').value : '');
+  }catch(e){ msg.textContent = e.message; }
+}
+
+async function anvAbrirConfig(){
+  abrirModal(`<h3 style="margin-top:0">⚙️ Configuração de disparo</h3>
+    <div class="carregando">Carregando…</div>`);
+  try{
+    const [cfg, mod] = await Promise.all([
+      apiAniversario('aniversarioConfigObter'),
+      apiAniversario('aniversarioMensagemObter'),
+    ]);
+    const c = cfg.config;
+    const pode = ANV.acesso === 'edit';
+    const corpo = `<h3 style="margin-top:0">⚙️ Configuração de disparo</h3>
+      <label>Modo</label>
+      <select id="anv-cfg-modo" ${pode?'':'disabled'}><option value="aprovacao"${c.modo==='aprovacao'?' selected':''}>Aprovação manual</option><option value="automatico"${c.modo==='automatico'?' selected':''}>Automático</option></select>
+      <label>Destino</label>
+      <select id="anv-cfg-destino" ${pode?'':'disabled'}><option value="grupo"${c.destino==='grupo'?' selected':''}>Grupo</option><option value="direto"${c.destino==='direto'?' selected':''}>Direto (pessoa)</option><option value="ambos"${c.destino==='ambos'?' selected':''}>Ambos</option></select>
+      <label>ID do grupo do WhatsApp</label>
+      <input type="text" id="anv-cfg-grupo" value="${esc(c.grupo_id||'')}" placeholder="ainda sem lista de grupos nesta área" ${pode?'':'disabled'}>
+      <label>Horário do disparo diário</label>
+      <input type="text" id="anv-cfg-horario" value="${esc(c.horario||'08:00')}" ${pode?'':'disabled'}>
+      <label style="margin-top:10px">Mensagem (use {{POSTO_NOME}} e {{LINK_ZAP}})</label>
+      <textarea id="anv-cfg-msg" rows="4" ${pode?'':'disabled'}>${esc(mod.texto||'')}</textarea>
+      <div id="anv-cfg-erro" style="color:#a4202a;font-size:13px;margin-top:6px"></div>
+      <div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn secundario" onclick="fecharModal()">Fechar</button>
+        ${pode?`<button class="btn secundario" onclick="anvDispararAgora()">🚀 Disparar agora</button><button class="btn" onclick="anvSalvarConfig()">Salvar</button>`:''}
+      </div>`;
+    abrirModal(corpo);
+  }catch(e){ abrirModal(`<h3 style="margin-top:0">⚙️ Configuração de disparo</h3><p style="color:#a4202a">${esc(e.message)}</p>`); }
+}
+async function anvSalvarConfig(){
+  const erro = document.getElementById('anv-cfg-erro');
+  try{
+    await apiAniversario('aniversarioConfigSalvar', {
+      modo: document.getElementById('anv-cfg-modo').value,
+      destino: document.getElementById('anv-cfg-destino').value,
+      grupo_id: document.getElementById('anv-cfg-grupo').value,
+      horario: document.getElementById('anv-cfg-horario').value,
+    });
+    await apiAniversario('aniversarioMensagemSalvar', { texto: document.getElementById('anv-cfg-msg').value });
+    fecharModal();
+  }catch(e){ erro.textContent = e.message; }
+}
+async function anvDispararAgora(){
+  const erro = document.getElementById('anv-cfg-erro');
+  erro.textContent = '';
+  try{ await apiAniversario('aniversarioDispararAgora'); erro.style.color='#2a7a2a'; erro.textContent = 'Disparado!'; }
+  catch(e){ erro.style.color='#a4202a'; erro.textContent = e.message; }
 }
 
 // ================= ABA CARTA DE SITUAÇÃO (P3) =================
