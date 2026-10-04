@@ -834,12 +834,14 @@ async function renderAreaAniversario(areaId, acesso){
       <div style="min-width:260px"><label>Buscar por nome ou nome de guerra</label><input type="text" id="anv-busca" placeholder="Buscar..."></div>
       <div><button class="btn secundario" id="anv-buscar">Buscar</button></div>
       <div><button class="btn secundario" id="anv-config">⚙️ Configuração de disparo</button></div>
+      <div><button class="btn secundario" id="anv-fila">📋 Fila de aprovação</button></div>
     </div>
-    <div style="font-size:12px;color:#888;margin:2px 0 10px">Data e telefone usam o mesmo militar cadastrado em 👥 Efetivo (aba Escala). O envio automático ainda não está ativo nesta área — falta configurar a conexão de WhatsApp.</div>
+    <div style="font-size:12px;color:#888;margin:2px 0 10px">Data e telefone usam o mesmo militar cadastrado em 👥 Efetivo (aba Escala). O disparo roda sozinho a cada 15 min, mas só envia a partir do horário configurado.</div>
     <div id="anv-lista"><div class="carregando">Carregando…</div></div>
   `;
   document.getElementById('anv-buscar').addEventListener('click', ()=>anvCarregar(document.getElementById('anv-busca').value));
   document.getElementById('anv-config').addEventListener('click', ()=>anvAbrirConfig());
+  document.getElementById('anv-fila').addEventListener('click', ()=>anvAbrirFila());
   anvCarregar('');
 }
 
@@ -885,24 +887,31 @@ async function anvAbrirConfig(){
   abrirModal(`<h3 style="margin-top:0">⚙️ Configuração de disparo</h3>
     <div class="carregando">Carregando…</div>`);
   try{
-    const [cfg, mod] = await Promise.all([
+    const [cfg, mod, gr] = await Promise.all([
       apiAniversario('aniversarioConfigObter'),
       apiAniversario('aniversarioMensagemObter'),
+      apiAniversario('aniversarioGrupos').catch(e=>({grupos:[], erro:e.message})),
     ]);
     const c = cfg.config;
     const pode = ANV.acesso === 'edit';
+    const grupos = gr.grupos || [];
+    let optsGrupo = '<option value="">-- selecione --</option>' + grupos.map(g=>`<option value="${esc(g.id)}"${g.id===c.grupo_id?' selected':''}>${esc(g.nome)}</option>`).join('');
+    if(c.grupo_id && !grupos.some(g=>g.id===c.grupo_id)) optsGrupo += `<option value="${esc(c.grupo_id)}" selected>${esc(c.grupo_id)} (não encontrado agora)</option>`;
+    const avisoGrupo = gr.erro ? `<div style="font-size:12px;color:#a4202a;margin-top:4px">Não consegui carregar os grupos: ${esc(gr.erro)}</div>` : '';
     const corpo = `<h3 style="margin-top:0">⚙️ Configuração de disparo</h3>
       <label>Modo</label>
       <select id="anv-cfg-modo" ${pode?'':'disabled'}><option value="aprovacao"${c.modo==='aprovacao'?' selected':''}>Aprovação manual</option><option value="automatico"${c.modo==='automatico'?' selected':''}>Automático</option></select>
       <label>Destino</label>
       <select id="anv-cfg-destino" ${pode?'':'disabled'}><option value="grupo"${c.destino==='grupo'?' selected':''}>Grupo</option><option value="direto"${c.destino==='direto'?' selected':''}>Direto (pessoa)</option><option value="ambos"${c.destino==='ambos'?' selected':''}>Ambos</option></select>
-      <label>ID do grupo do WhatsApp</label>
-      <input type="text" id="anv-cfg-grupo" value="${esc(c.grupo_id||'')}" placeholder="ainda sem lista de grupos nesta área" ${pode?'':'disabled'}>
+      <label>Grupo do WhatsApp</label>
+      <select id="anv-cfg-grupo" ${pode?'':'disabled'}>${optsGrupo}</select>
+      ${avisoGrupo}
       <label>Horário do disparo diário</label>
-      <input type="text" id="anv-cfg-horario" value="${esc(c.horario||'08:00')}" ${pode?'':'disabled'}>
+      <input type="text" id="anv-cfg-horario" value="${esc(c.horario||'08:00')}" placeholder="08:00" ${pode?'':'disabled'}>
+      <div style="font-size:12px;color:#888;margin-top:2px">O disparo roda a cada 15 min e só envia a partir desse horário — pode atrasar até 15 min.</div>
       <label style="margin-top:10px">Mensagem (use {{POSTO_NOME}} e {{LINK_ZAP}})</label>
       <textarea id="anv-cfg-msg" rows="4" ${pode?'':'disabled'}>${esc(mod.texto||'')}</textarea>
-      <div id="anv-cfg-erro" style="color:#a4202a;font-size:13px;margin-top:6px"></div>
+      <div id="anv-cfg-erro" style="font-size:13px;margin-top:6px"></div>
       <div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
         <button class="btn secundario" onclick="fecharModal()">Fechar</button>
         ${pode?`<button class="btn secundario" onclick="anvDispararAgora()">🚀 Disparar agora</button><button class="btn" onclick="anvSalvarConfig()">Salvar</button>`:''}
@@ -921,13 +930,42 @@ async function anvSalvarConfig(){
     });
     await apiAniversario('aniversarioMensagemSalvar', { texto: document.getElementById('anv-cfg-msg').value });
     fecharModal();
-  }catch(e){ erro.textContent = e.message; }
+  }catch(e){ erro.style.color='#a4202a'; erro.textContent = e.message; }
 }
 async function anvDispararAgora(){
   const erro = document.getElementById('anv-cfg-erro');
-  erro.textContent = '';
-  try{ await apiAniversario('aniversarioDispararAgora'); erro.style.color='#2a7a2a'; erro.textContent = 'Disparado!'; }
-  catch(e){ erro.style.color='#a4202a'; erro.textContent = e.message; }
+  erro.style.color = '#555'; erro.textContent = 'Processando…';
+  try{
+    const r = await apiAniversario('aniversarioDispararAgora');
+    erro.style.color = '#2a7a2a';
+    erro.textContent = `Processados: ${r.processados} · Enviados: ${r.enviados} · Aguardando aprovação: ${r.pendentes}` + ((r.erros&&r.erros.length) ? ` · Erros: ${r.erros.join('; ')}` : '');
+  }catch(e){ erro.style.color='#a4202a'; erro.textContent = e.message; }
+}
+async function anvAbrirFila(){
+  abrirModal(`<h3 style="margin-top:0">📋 Fila de aprovação</h3><div class="carregando">Carregando…</div>`);
+  try{
+    const d = await apiAniversario('aniversarioFilaListar');
+    const pode = ANV.acesso === 'edit';
+    const ROTULO = {aguardando_aprovacao:'Aguardando aprovação', enviado:'Enviado', erro:'Erro', enviando:'Enviando'};
+    const COR = {aguardando_aprovacao:'#8a6d00', enviado:'#2a7a2a', erro:'#a4202a', enviando:'#555'};
+    const corpo = `<h3 style="margin-top:0">📋 Fila de aprovação</h3>
+      <div style="max-height:60vh;overflow:auto">
+      ${(d.fila||[]).map(it=>{
+        const mil = it.bi4cia_efetivo || {};
+        return `<div style="border-bottom:1px solid #eee;padding:10px 0">
+          <div><b>${esc(mil.patente||'')} ${esc(mil.nome_completo||it.matricula)}</b> — ${esc(it.data_referencia)} — <span style="color:${COR[it.status]||'#555'}">${esc(ROTULO[it.status]||it.status)}</span></div>
+          <div style="font-size:12px;color:#666;white-space:pre-wrap;margin:4px 0">${esc(it.mensagem_gerada||'')}</div>
+          ${pode && it.status!=='enviado' ? `<button class="btn secundario" onclick="anvFilaEnviar('${it.id}')">Enviar agora</button>` : ''}
+        </div>`;
+      }).join('') || '<p style="color:#999">Nada na fila ainda.</p>'}
+      </div>
+      <div style="text-align:right;margin-top:14px"><button class="btn secundario" onclick="fecharModal()">Fechar</button></div>`;
+    abrirModal(corpo);
+  }catch(e){ abrirModal(`<h3 style="margin-top:0">📋 Fila de aprovação</h3><p style="color:#a4202a">${esc(e.message)}</p>`); }
+}
+async function anvFilaEnviar(id){
+  try{ await apiAniversario('aniversarioFilaEnviar', {id}); anvAbrirFila(); }
+  catch(e){ alert(e.message); }
 }
 
 // ================= ABA CARTA DE SITUAÇÃO (P3) =================
