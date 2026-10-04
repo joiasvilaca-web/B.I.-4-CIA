@@ -851,21 +851,29 @@ async function anvCarregar(busca){
     const d = await apiAniversario('aniversarioListar', {busca});
     ANV.militares = d.militares;
     const pode = ANV.acesso === 'edit';
-    lista.innerHTML = `<table><thead><tr><th>Patente</th><th>Nome completo</th><th>Nome de guerra</th><th>Aniversário</th><th>Telefone</th><th></th></tr></thead><tbody>
+    lista.innerHTML = `<table><thead><tr><th>Patente</th><th>Nome completo</th><th>Nome de guerra</th><th>Aniversário</th><th>Telefone</th><th>Grupo</th><th></th></tr></thead><tbody>
       ${d.militares.map((m,i)=>`<tr><td>${esc(m.patente||'')}</td><td style="font-size:12px">${esc(m.nome_completo)}</td><td>${esc(m.nome_guerra||'')}</td>
-        <td>${esc(m.dataExibicao||'—')}</td><td>${esc(m.telefone||'—')}</td>
-        <td>${pode?`<button class="btn secundario" onclick="anvEditar(${i})">Editar</button>`:''}</td></tr>`).join('') || '<tr><td colspan="6" style="color:#999">Nada encontrado</td></tr>'}
+        <td>${esc(m.dataExibicao||'—')}</td><td>${esc(m.telefone||'—')}</td><td>${m.grupo_aniversario_id?'🔹 próprio':'padrão'}</td>
+        <td>${pode?`<button class="btn secundario" onclick="anvEditar(${i})">Editar</button>`:''}</td></tr>`).join('') || '<tr><td colspan="7" style="color:#999">Nada encontrado</td></tr>'}
       </tbody></table>`;
   }catch(e){ lista.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p>`; }
 }
 
-function anvEditar(i){
+async function anvEditar(i){
   const m = ANV.militares[i]; if(!m) return;
+  abrirModal(`<h3 style="margin-top:0">🎂 ${esc(m.patente||'')} ${esc(m.nome_completo)}</h3><div class="carregando">Carregando…</div>`);
+  let grupos = [];
+  try{ const gr = await apiAniversario('aniversarioGrupos'); grupos = gr.grupos||[]; }catch(e){}
+  let optsGrupo = '<option value="">-- usar o grupo padrão --</option>' + grupos.map(g=>`<option value="${esc(g.id)}"${g.id===m.grupo_aniversario_id?' selected':''}>${esc(g.nome)}</option>`).join('');
+  if(m.grupo_aniversario_id && !grupos.some(g=>g.id===m.grupo_aniversario_id)) optsGrupo += `<option value="${esc(m.grupo_aniversario_id)}" selected>${esc(m.grupo_aniversario_id)} (não encontrado agora)</option>`;
   abrirModal(`<h3 style="margin-top:0">🎂 ${esc(m.patente||'')} ${esc(m.nome_completo)}</h3>
     <label>Data de aniversário (DD/MM)</label>
     <input type="text" id="anv-ed-data" value="${esc(m.dataExibicao||'')}" placeholder="21/09">
     <label>Telefone (com DDD)</label>
     <input type="text" id="anv-ed-tel" value="${esc(m.telefone||'')}" placeholder="32999990000">
+    <label>Grupo do WhatsApp pra essa pessoa</label>
+    <select id="anv-ed-grupo">${optsGrupo}</select>
+    <div style="font-size:12px;color:#888;margin-top:2px">Deixe em "usar o grupo padrão" pra cair no grupo configurado em ⚙️ Configuração de disparo.</div>
     <div id="anv-ed-msg" style="color:#a4202a;font-size:13px;margin-top:6px"></div>
     <div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn secundario" onclick="fecharModal()">Cancelar</button>
@@ -875,9 +883,10 @@ function anvEditar(i){
 async function anvSalvar(matricula){
   const data = document.getElementById('anv-ed-data').value;
   const telefone = document.getElementById('anv-ed-tel').value;
+  const grupo_aniversario_id = document.getElementById('anv-ed-grupo').value;
   const msg = document.getElementById('anv-ed-msg');
   try{
-    await apiAniversario('aniversarioSalvar', {matricula, data, telefone});
+    await apiAniversario('aniversarioSalvar', {matricula, data, telefone, grupo_aniversario_id});
     fecharModal();
     anvCarregar(document.getElementById('anv-busca') ? document.getElementById('anv-busca').value : '');
   }catch(e){ msg.textContent = e.message; }
