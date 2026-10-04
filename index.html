@@ -835,6 +835,7 @@ async function renderAreaAniversario(areaId, acesso){
       <div><button class="btn secundario" id="anv-buscar">Buscar</button></div>
       <div><button class="btn secundario" id="anv-config">⚙️ Configuração de disparo</button></div>
       <div><button class="btn secundario" id="anv-fila">📋 Fila de aprovação</button></div>
+      <div><button class="btn" id="anv-incluir">+ Incluir pessoa</button></div>
     </div>
     <div style="font-size:12px;color:#888;margin:2px 0 10px">Data e telefone usam o mesmo militar cadastrado em 👥 Efetivo (aba Escala). O disparo roda sozinho a cada 15 min, mas só envia a partir do horário configurado.</div>
     <div id="anv-lista"><div class="carregando">Carregando…</div></div>
@@ -842,6 +843,7 @@ async function renderAreaAniversario(areaId, acesso){
   document.getElementById('anv-buscar').addEventListener('click', ()=>anvCarregar(document.getElementById('anv-busca').value));
   document.getElementById('anv-config').addEventListener('click', ()=>anvAbrirConfig());
   document.getElementById('anv-fila').addEventListener('click', ()=>anvAbrirFila());
+  document.getElementById('anv-incluir').addEventListener('click', ()=>anvIncluir());
   anvCarregar('');
 }
 
@@ -854,7 +856,7 @@ async function anvCarregar(busca){
     lista.innerHTML = `<table><thead><tr><th>Patente</th><th>Nome completo</th><th>Nome de guerra</th><th>Aniversário</th><th>Telefone</th><th>Grupo</th><th></th></tr></thead><tbody>
       ${d.militares.map((m,i)=>`<tr><td>${esc(m.patente||'')}</td><td style="font-size:12px">${esc(m.nome_completo)}</td><td>${esc(m.nome_guerra||'')}</td>
         <td>${esc(m.dataExibicao||'—')}</td><td>${esc(m.telefone||'—')}</td><td>${m.grupo_aniversario_id?'🔹 próprio':'padrão'}</td>
-        <td>${pode?`<button class="btn secundario" onclick="anvEditar(${i})">Editar</button>`:''}</td></tr>`).join('') || '<tr><td colspan="7" style="color:#999">Nada encontrado</td></tr>'}
+        <td>${pode?`<button class="btn secundario" onclick="anvEditar(${i})">Editar</button> <button class="btn secundario" onclick="anvExcluir('${m.matricula}','${esc(m.nome_completo).replace(/'/g,"\\'")}')" title="Marca como inativo — some das listas e do disparo, mas mantém o histórico de escala">Excluir</button>`:''}</td></tr>`).join('') || '<tr><td colspan="7" style="color:#999">Nada encontrado</td></tr>'}
       </tbody></table>`;
   }catch(e){ lista.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p>`; }
 }
@@ -889,6 +891,58 @@ async function anvSalvar(matricula){
     await apiAniversario('aniversarioSalvar', {matricula, data, telefone, grupo_aniversario_id});
     fecharModal();
     anvCarregar(document.getElementById('anv-busca') ? document.getElementById('anv-busca').value : '');
+  }catch(e){ msg.textContent = e.message; }
+}
+
+async function anvExcluir(matricula, nome){
+  if(!confirm(`Marcar "${nome}" como inativo? Ela some da lista de Aniversários e do disparo automático, mas o histórico de escala continua intacto. Pra reverter, é só me pedir.`)) return;
+  try{
+    await apiAniversario('aniversarioExcluir', {matricula});
+    anvCarregar(document.getElementById('anv-busca') ? document.getElementById('anv-busca').value : '');
+  }catch(e){ alert(e.message); }
+}
+
+async function anvIncluir(){
+  abrirModal(`<h3 style="margin-top:0">+ Incluir pessoa</h3><div class="carregando">Carregando…</div>`);
+  let grupos = [];
+  try{ const gr = await apiAniversario('aniversarioGrupos'); grupos = gr.grupos||[]; }catch(e){}
+  const optsGrupo = '<option value="">-- usar o grupo padrão --</option>' + grupos.map(g=>`<option value="${esc(g.id)}">${esc(g.nome)}</option>`).join('');
+  abrirModal(`<h3 style="margin-top:0">+ Incluir pessoa</h3>
+    <label>Matrícula</label>
+    <input type="text" id="anv-in-matricula" placeholder="1234567">
+    <label>Patente</label>
+    <input type="text" id="anv-in-patente" placeholder="3º SGT">
+    <label>Nome completo</label>
+    <input type="text" id="anv-in-nome" placeholder="Nome completo">
+    <label>Nome de guerra (opcional)</label>
+    <input type="text" id="anv-in-guerra" placeholder="Ex: Nogueira">
+    <label>Data de aniversário (DD/MM, opcional)</label>
+    <input type="text" id="anv-in-data" placeholder="21/09">
+    <label>Telefone com DDD (opcional)</label>
+    <input type="text" id="anv-in-tel" placeholder="32999990000">
+    <label>Grupo do WhatsApp pra essa pessoa</label>
+    <select id="anv-in-grupo">${optsGrupo}</select>
+    <div id="anv-in-msg" style="color:#a4202a;font-size:13px;margin-top:6px"></div>
+    <div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn secundario" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" onclick="anvSalvarIncluir()">Incluir</button>
+    </div>`);
+}
+async function anvSalvarIncluir(){
+  const msg = document.getElementById('anv-in-msg');
+  const payload = {
+    matricula: document.getElementById('anv-in-matricula').value,
+    patente: document.getElementById('anv-in-patente').value,
+    nome_completo: document.getElementById('anv-in-nome').value,
+    nome_guerra: document.getElementById('anv-in-guerra').value,
+    data: document.getElementById('anv-in-data').value,
+    telefone: document.getElementById('anv-in-tel').value,
+    grupo_aniversario_id: document.getElementById('anv-in-grupo').value,
+  };
+  try{
+    await apiAniversario('aniversarioIncluir', payload);
+    fecharModal();
+    anvCarregar('');
   }catch(e){ msg.textContent = e.message; }
 }
 
