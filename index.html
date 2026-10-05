@@ -368,6 +368,7 @@ async function renderArea(areaId, opts={}){
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='carta'?'ativo':''}" data-tab="carta">📄 Carta de Situação</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='os'?'ativo':''}" data-tab="os">📑 O.S.</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='aniversario'?'ativo':''}" data-tab="aniversario">🎂 Aniversários</div>` : ''}
+      ${areaId==='P5' ? `<div class="tab-area ${abaArea==='edital'?'ativo':''}" data-tab="edital">📑 Edital</div>` : ''}
     </div>
     <div id="area-corpo"><div class="carregando">Carregando…</div></div>
   `;
@@ -379,6 +380,7 @@ async function renderArea(areaId, opts={}){
   if(abaArea==='carta' && areaId==='P3') return renderAreaCarta(areaId, acesso);
   if(abaArea==='os' && areaId==='P3') return renderAreaOS(areaId, acesso);
   if(abaArea==='aniversario' && areaId==='P5') return renderAreaAniversario(areaId, acesso);
+  if(abaArea==='edital' && areaId==='P5') return renderAreaEdital(areaId, acesso);
 
   let d;
   try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
@@ -1029,6 +1031,259 @@ async function anvAbrirFila(){
 async function anvFilaEnviar(id){
   try{ await apiAniversario('aniversarioFilaEnviar', {id}); anvAbrirFila(); }
   catch(e){ alert(e.message); }
+}
+
+// ================= ABA EDITAL (P5) =================
+const EDITAL_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-edital";
+const ED_MONITOR = "https://monitor-licitacoes-pncp-joias-vilacas-projects.vercel.app";
+const ED_PROJETO = "https://projeto-edital-grec-joias-vilacas-projects.vercel.app";
+const ED_LS_F = "bi4cia_edital_filtros_v1", ED_LS_V = "bi4cia_edital_vistos_v1", ED_LS_I = "bi4cia_edital_info_v1";
+async function apiEdital(op, params={}){
+  const r = await fetch(EDITAL_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify({op, token: ST.token, ...params})
+  });
+  const d = await r.json();
+  if(!d.ok){ throw new Error(d.erro || 'Erro desconhecido'); }
+  return d;
+}
+const ED_ZONA = ["Matias Barbosa","Chácara","Coronel Pacheco","Simão Pereira","Goianá","Belmiro Braga","Piau","Bicas","Guarará","Santana do Deserto","Rio Novo","Maripá de Minas","Tabuleiro","Rochedo de Minas","Pequeri","Pedro Teixeira","Lima Duarte","Senador Cortes","Mar de Espanha","Santa Bárbara do Monte Verde","São João Nepomuceno","Guarani","Rio Pomba","Argirita","Olaria","Descoberto","Piraúba","Chiador","Santo Antônio do Aventureiro","Rio Preto","Silverânia","Tocantins","Mercês","Astolfo Dutra","Leopoldina","Dona Eusébia","Rodeiro","Ubá","Dores do Turvo","Cataguases","Além Paraíba","Visconde do Rio Branco","Divinésia","Itamarati de Minas","Laranjal","Recreio","Guidoval","São Geraldo","Guiricema","Paula Cândido","Senador Firmino","Santana de Cataguases","Santa Rita do Jacutinga","Palma","Miraí","Coimbra","Volta Grande","Estrela D'Alva","São Sebastião da Vargem Alegre","Cajuri","Muriaé","Brás Pires","Barão do Monte Alto","Viçosa","Ervália","Pirapetinga","Teixeiras","São Miguel do Anta","Patrocínio do Muriaé","Eugenópolis","Miradouro","Rosário da Limeira","Canaã","Pedra do Anta","Antônio Prado de Minas","Vieiras","Araponga","São Francisco do Glória","Fervedouro","Pedra Dourada","Tombos","Faria Lemos","Divino","Orizânia","Carangola"];
+
+let ED = { sub:'tjmg', editais:[], vistos:new Set(), primeira:false, infos:{}, comarcas:[], sel:new Set(), situacao:'abertos_abrir', regiao:'zm', palavra:'',
+  enriquecendo:false, carregando:false, status:'', erro:'', projetoUrl:'', pronto:false };
+
+function edInjetarCss(){
+  if(document.getElementById('ed-css')) return;
+  const st = document.createElement('style'); st.id = 'ed-css';
+  st.textContent = `
+  .ed-root{--ed-line:#e2e5ea;--ed-mute:#6b7280;--ed-brand:#1d4ed8;--ed-brand-ink:#1e3a8a;--ed-ok:#15803d}
+  .ed-main{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+  @media(max-width:1000px){.ed-main{grid-template-columns:1fr}}
+  .ed-card{background:#fff;border:1px solid var(--ed-line);border-radius:10px;padding:14px}
+  .ed-card h2{margin:0 0 10px;font-size:14px;font-weight:600}
+  .ed-root fieldset{border:0;padding:0;margin:0 0 12px}
+  .ed-root legend{font-weight:600;font-size:13px;margin-bottom:6px;padding:0}
+  .ed-root input[type=text],.ed-root select{width:100%;border:1px solid var(--ed-line);border-radius:6px;padding:7px 9px;font:inherit;background:#fff;box-sizing:border-box;margin:0}
+  .ed-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:300px;overflow:auto}
+  .ed-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ed-line);border-radius:999px;padding:3px 10px;cursor:pointer;background:#fafafa;user-select:none;font-size:12px;width:auto;margin:0}
+  .ed-chip input{margin:0;width:auto}
+  .ed-chip.on{background:#e8efff;border-color:#b6c8ff;color:var(--ed-brand-ink)}
+  .ed-add{display:flex;gap:6px;margin-top:8px}.ed-add input{flex:1}
+  .ed-b{font:inherit;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:600;margin:0;width:auto}
+  .ed-btn{background:var(--ed-brand);color:#fff;width:100%}.ed-btn:disabled{opacity:.6;cursor:wait}
+  .ed-btn2{background:#fff;border:1px solid var(--ed-line);color:#1f2328}
+  .ed-mini{padding:5px 9px;font-size:12px;font-weight:500}
+  .ed-status{font-size:12px;color:var(--ed-mute);margin-top:6px}.ed-status a{color:var(--ed-brand)}
+  .ed-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.ed-toolbar .cnt{font-weight:600}.ed-toolbar .sp{flex:1}
+  .ed-item{border:1px solid var(--ed-line);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff}
+  .ed-item.novo{background:#fef3c7;border-color:#fcd34d}
+  .ed-item h3{margin:0 0 4px;font-size:15px}.ed-item h3 a{color:var(--ed-brand);text-decoration:none}.ed-item h3 a:hover{text-decoration:underline}
+  .ed-meta{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:13px;color:var(--ed-mute);margin-bottom:6px;align-items:center}
+  .ed-tag{display:inline-block;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:600}
+  .ed-t-aberto{background:#dcfce7;color:var(--ed-ok)}.ed-t-abrir{background:#dbeafe;color:var(--ed-brand-ink)}.ed-t-fim{background:#f3f4f6;color:var(--ed-mute)}.ed-t-novo{background:#fde68a;color:#78350f}
+  .ed-resumo{font-size:13px;color:#374151;display:grid;grid-template-columns:auto 1fr;gap:3px 10px}.ed-resumo b{color:var(--ed-mute);font-weight:600;white-space:nowrap}
+  .ed-acoes{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ed-btnp{background:var(--ed-ok);color:#fff}
+  .ed-carreg{color:var(--ed-mute);font-style:italic}
+  .ed-arqs{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+  .ed-arqs a{font-size:12px;border:1px solid var(--ed-line);border-radius:6px;padding:4px 8px;color:#1f2328;text-decoration:none;background:#fafafa}
+  .ed-vazio{color:var(--ed-mute);padding:40px;text-align:center}
+  .ed-erro{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:6px;padding:10px;margin-bottom:10px;font-size:13px}
+  .ed-frame{width:100%;height:78vh;min-height:560px;border:1px solid var(--ed-line);border-radius:8px;background:#fff}`;
+  document.head.appendChild(st);
+}
+const edNorm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+function edHoje(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const edFmt = s => s ? s.split('-').reverse().join('/') : '—';
+const edDias = s => Math.ceil((new Date(s+'T23:59:59')-Date.now())/864e5);
+const edFmtR = v => v==null ? null : v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+// ---------- estado salvo (filtros, comarcas, "vistos" e resumos lidos) ----------
+function edCarregarEstado(){
+  ED.comarcas = ED_ZONA.slice(); ED.sel = new Set(ED_ZONA); ED.situacao = 'abertos_abrir'; ED.regiao = 'zm'; ED.palavra = '';
+  try{ const s = JSON.parse(localStorage.getItem(ED_LS_F)||'null');
+    if(s){ if(Array.isArray(s.comarcas) && s.comarcas.length) ED.comarcas = s.comarcas.slice(); if(Array.isArray(s.sel)) ED.sel = new Set(s.sel);
+      if(s.situacao) ED.situacao = s.situacao; if(s.regiao) ED.regiao = s.regiao; if(s.palavra) ED.palavra = s.palavra; } }catch(e){}
+  try{ const v = localStorage.getItem(ED_LS_V); ED.primeira = !v; ED.vistos = new Set(JSON.parse(v||'[]')); }catch(e){ ED.vistos = new Set(); ED.primeira = true; }
+  try{ ED.infos = JSON.parse(localStorage.getItem(ED_LS_I)||'{}'); }catch(e){ ED.infos = {}; }
+}
+function edSalvar(){ try{ localStorage.setItem(ED_LS_F, JSON.stringify({comarcas:ED.comarcas, sel:[...ED.sel], situacao:ED.situacao, regiao:ED.regiao, palavra:ED.palavra})); }catch(e){} }
+function edSalvarVistos(){ try{ localStorage.setItem(ED_LS_V, JSON.stringify([...ED.vistos])); }catch(e){} }
+
+// ---------- tela ----------
+async function renderAreaEdital(areaId, acesso){
+  edInjetarCss(); edCarregarEstado();
+  ED.sub = 'tjmg'; ED.editais = []; ED.status = ''; ED.erro = ''; ED.pronto = false; ED.projetoUrl = '';
+  edRenderSub();
+  edAtualizar();
+}
+function edRenderSub(){
+  const box = document.getElementById('area-corpo'); if(!box) return;
+  const bt = (k,t) => `<button class="btn ${ED.sub===k?'':'secundario'}" onclick="edSub('${k}')">${t}</button>`;
+  box.innerHTML = `<div class="ed-root">
+    <div class="filtros" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">${bt('tjmg','📋 Editais dos Fóruns (TJMG)')}${bt('pncp','🔎 Licitações (PNCP)')}${bt('projeto','📝 Projeto (montador)')}</div>
+    <div id="ed-conteudo"></div></div>`;
+  edRenderConteudo();
+}
+function edSub(k){ ED.sub = k; edRenderSub(); }
+function edRenderConteudo(){
+  const c = document.getElementById('ed-conteudo'); if(!c) return;
+  if(ED.sub==='tjmg'){ edRenderTjmg(); return; }
+  const url = ED.sub==='pncp' ? ED_MONITOR+'/pncp.html' : (ED.projetoUrl || ED_PROJETO+'/');
+  c.innerHTML = `<div class="ed-toolbar"><span class="cnt">${ED.sub==='pncp' ? 'Licitações no PNCP' : 'Montador de projeto (GREC)'}</span><span class="sp"></span>
+      ${ED.sub==='projeto' ? '<button class="ed-b ed-btn2 ed-mini" onclick="edSub(\'tjmg\')">← Voltar aos editais</button>' : ''}
+      <a class="ed-b ed-btn2 ed-mini" style="text-decoration:none;display:inline-block" href="${esc(url)}" target="_blank" rel="noopener">↗ Abrir em nova janela</a></div>
+    <iframe class="ed-frame" src="${esc(url)}" title="${ED.sub==='pncp' ? 'PNCP' : 'Projeto'}" allow="clipboard-write; downloads"></iframe>
+    <div class="ed-status">Se esta janela não carregar, use “Abrir em nova janela”.</div>`;
+}
+function edRenderTjmg(){
+  const c = document.getElementById('ed-conteudo'); if(!c) return;
+  const sitOpt = (v,t) => `<option value="${v}" ${ED.situacao===v?'selected':''}>${t}</option>`;
+  c.innerHTML = `<div class="ed-main">
+    <aside class="ed-card">
+      <h2>Filtros</h2>
+      <fieldset><legend>Situação das inscrições</legend>
+        <select onchange="edSetFiltro('situacao',this.value)">${sitOpt('abertos_abrir','Abertas ou a abrir')}${sitOpt('abertos','Abertas agora')}${sitOpt('abrir','Ainda vão abrir')}${sitOpt('todos','Todos (inclui encerrados e resultados)')}</select></fieldset>
+      <fieldset><legend>Região</legend>
+        <select onchange="edSetFiltro('regiao',this.value)"><option value="zm" ${ED.regiao==='zm'?'selected':''}>Só Zona da Mata</option><option value="mg" ${ED.regiao==='mg'?'selected':''}>Todo o estado de MG</option></select></fieldset>
+      <fieldset id="ed-fs-comarcas" style="${ED.regiao==='zm'?'':'display:none'}"><legend>Comarcas da Zona da Mata</legend>
+        <div class="ed-chips" id="ed-chips"></div>
+        <div class="ed-add"><input type="text" id="ed-nova" placeholder="Adicionar comarca" onkeydown="if(event.key==='Enter')edAddComarca()"><button class="ed-b ed-btn2 ed-mini" onclick="edAddComarca()">Adicionar</button></div>
+        <div class="ed-add"><button class="ed-b ed-btn2 ed-mini" onclick="edMarcarTodas(true)">Marcar todas</button><button class="ed-b ed-btn2 ed-mini" onclick="edMarcarTodas(false)">Desmarcar todas</button></div>
+        <div class="ed-add"><button class="ed-b ed-btn2 ed-mini" onclick="edRestaurarComarcas()" title="Volta à lista original de 85 comarcas">↺ Restaurar lista padrão</button></div></fieldset>
+      <fieldset><legend>Palavra no texto (opcional)</legend><input type="text" id="ed-palavra" value="${esc(ED.palavra)}" placeholder="ex.: segurança pública" oninput="edSetFiltro('palavra',this.value,true)"></fieldset>
+      <button class="ed-b ed-btn" id="ed-btn-atualizar" onclick="edAtualizar()" ${ED.carregando?'disabled':''}>Atualizar</button>
+      <div class="ed-status" id="ed-status">${esc(ED.status)}</div>
+      <div class="ed-status">Itens em amarelo são novos desde a sua última visita.<br><button class="ed-b ed-btn2 ed-mini" style="margin-top:6px" onclick="edMarcarVistos()">Marcar tudo como visto</button></div>
+      <div class="ed-status" style="margin-top:12px">Fonte: <a href="https://www.tjmg.jus.br/portal-tjmg/processos/prestacao-pecuniaria/editais-e-andamentos.htm" target="_blank" rel="noopener">TJMG · Editais e Andamentos</a></div>
+    </aside>
+    <section class="ed-card">
+      <div class="ed-toolbar"><span class="cnt" id="ed-contador">${ED.pronto ? '' : 'Carregando…'}</span><span class="sp"></span><button class="ed-b ed-btn2 ed-mini" onclick="edCsv()">Exportar CSV</button></div>
+      <div id="ed-msg">${ED.erro ? `<div class="ed-erro">${esc(ED.erro)}</div>` : ''}</div>
+      <div id="ed-lista"><div class="ed-vazio">${ED.pronto ? '' : 'Buscando editais no portal do TJMG…'}</div></div>
+    </section></div>`;
+  edRenderChips(); if(ED.pronto) edRenderLista();
+}
+function edRenderChips(){
+  const el = document.getElementById('ed-chips'); if(!el) return;
+  el.innerHTML = ED.comarcas.map(v=>{ const on = ED.sel.has(v);
+    return `<label class="ed-chip ${on?'on':''}"><input type="checkbox" data-v="${esc(v)}" ${on?'checked':''} onchange="edToggleComarca(this.dataset.v,this.checked)"> ${esc(v)} <span title="remover da lista" style="cursor:pointer;opacity:.5" data-v="${esc(v)}" onclick="event.preventDefault();edRemoverComarca(this.dataset.v)">×</span></label>`; }).join('');
+}
+function edSetFiltro(k,v,semRender){
+  ED[k] = v; edSalvar();
+  if(k==='regiao'){ const f = document.getElementById('ed-fs-comarcas'); if(f) f.style.display = v==='zm' ? '' : 'none'; }
+  edRenderLista();
+}
+function edToggleComarca(v,on){ on ? ED.sel.add(v) : ED.sel.delete(v); edSalvar(); edRenderChips(); edRenderLista(); }
+function edRemoverComarca(v){ ED.comarcas = ED.comarcas.filter(x=>x!==v); ED.sel.delete(v); edSalvar(); edRenderChips(); edRenderLista(); }
+function edAddComarca(){
+  const el = document.getElementById('ed-nova'); const v = ((el&&el.value)||'').trim(); if(!v) return;
+  if(!ED.comarcas.includes(v)) ED.comarcas.push(v); ED.sel.add(v); el.value = '';
+  edSalvar(); edRenderChips(); edRenderLista();
+}
+function edMarcarTodas(on){ ED.comarcas.forEach(c=> on ? ED.sel.add(c) : ED.sel.delete(c)); edSalvar(); edRenderChips(); edRenderLista(); }
+function edRestaurarComarcas(){
+  if(!confirm('Voltar para a lista original de 85 comarcas da Zona da Mata? As comarcas que você adicionou ou removeu serão desfeitas.')) return;
+  ED.comarcas = ED_ZONA.slice(); ED.sel = new Set(ED_ZONA); edSalvar(); edRenderChips(); edRenderLista();
+}
+function edMarcarVistos(){ ED.editais.forEach(e=>ED.vistos.add(e.id)); edSalvarVistos(); edRenderLista(); }
+
+// ---------- editais ----------
+function edSituacao(e){
+  const hoje = edHoje();
+  if(e.tipo==='resultado') return 'resultado';
+  if(!e.fim) return 'indefinido';
+  if(e.fim < hoje) return 'encerrado';
+  if(e.inicio && e.inicio > hoje) return 'abrir';
+  return 'aberto';
+}
+function edFiltrar(){
+  const q = edNorm(ED.palavra), selN = new Set([...ED.sel].map(edNorm));
+  return ED.editais.filter(e=>{
+    const s = edSituacao(e);
+    if(ED.situacao==='abertos' && s!=='aberto') return false;
+    if(ED.situacao==='abrir' && s!=='abrir') return false;
+    if(ED.situacao==='abertos_abrir' && !(s==='aberto' || s==='abrir' || s==='indefinido')) return false;
+    if(ED.regiao==='zm' && !selN.has(edNorm(e.comarca))) return false;
+    if(q && !edNorm((e.titulo||'')+' '+(e.resumo||'')).includes(q)) return false;
+    return true;
+  });
+}
+function edPdfDe(e){ const a = e.arquivos||[]; return a.find(x=>/edital/i.test(x.nome) && /fileDownload/.test(x.url)) || a.find(x=>/fileDownload/.test(x.url)); }
+function edResumoHtml(e){
+  const i = ED.infos[e.id];
+  const valor = i && i.valor!=null ? edFmtR(i.valor) : (i ? 'não localizado no PDF' : '<span class="ed-carreg">lendo o edital…</span>');
+  let local;
+  if(i){ local = (i.local && i.local[0]) || (e.email ? 'e-mail '+e.email : (i.emails && i.emails[0] ? 'e-mail '+i.emails[0] : 'ver edital')); }
+  else local = e.email ? 'e-mail '+e.email : null;
+  const prazo = e.fim ? `até ${edFmt(e.fim)}` + (e.inicio ? ` (a partir de ${edFmt(e.inicio)})` : '') : ((i && i.prazo && i.prazo[0]) ? i.prazo[0] : 'ver edital');
+  return `<div class="ed-resumo"><b>Cidade</b><span>${esc(e.comarca)}/MG</span><b>Valor do edital</b><span>${valor}</span><b>Envio da proposta</b><span>${esc(prazo)}</span><b>Local de entrega</b><span>${local===null ? '<span class="ed-carreg">lendo o edital…</span>' : esc(local)}</span></div>`;
+}
+const ED_ORDEM = {aberto:0,abrir:1,indefinido:2,encerrado:3,resultado:4};
+function edRenderLista(){
+  const el = document.getElementById('ed-lista'); if(!el) return;
+  const lista = edFiltrar().sort((a,b)=>{ const oa=ED_ORDEM[edSituacao(a)], ob=ED_ORDEM[edSituacao(b)]; if(oa!==ob) return oa-ob; return (a.fim||'9999').localeCompare(b.fim||'9999'); });
+  const novos = lista.filter(e=>!ED.vistos.has(e.id)).length;
+  const cnt = document.getElementById('ed-contador'); if(cnt) cnt.textContent = ED.pronto ? `${lista.length} edital(is)` + (novos ? ` · ${novos} novo(s)` : '') : 'Carregando…';
+  if(!ED.pronto) return;
+  if(!lista.length){ el.innerHTML = '<div class="ed-vazio">Nenhum edital com esses filtros. Troque a situação para "Todos" ou a região para "Todo o estado" para conferir.</div>'; return; }
+  el.innerHTML = lista.map(e=>{
+    const s = edSituacao(e), novo = !ED.vistos.has(e.id);
+    const tag = s==='aberto' ? `<span class="ed-tag ed-t-aberto">Inscrições abertas · ${edDias(e.fim)} dia(s) restante(s)</span>`
+      : s==='abrir' ? `<span class="ed-tag ed-t-abrir">Abre em ${edFmt(e.inicio)}</span>`
+      : s==='encerrado' ? '<span class="ed-tag ed-t-fim">Encerrado</span>'
+      : s==='resultado' ? '<span class="ed-tag ed-t-fim">Resultado / decisão</span>' : '<span class="ed-tag ed-t-fim">Prazo não identificado — confira o edital</span>';
+    return `<div class="ed-item ${novo?'novo':''}">
+      <h3><a href="${esc(e.detalhe||'#')}" target="_blank" rel="noopener">${esc(e.titulo)}</a></h3>
+      <div class="ed-meta">${novo?'<span class="ed-tag ed-t-novo">Novo</span>':''}${tag}<span>Inscrições: ${edFmt(e.inicio)} a ${edFmt(e.fim)}</span>${e.email?`<span>Envio: <a href="mailto:${esc(e.email)}">${esc(e.email)}</a></span>`:''}</div>
+      ${edResumoHtml(e)}
+      <div class="ed-arqs">${(e.arquivos||[]).map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener">⬇ ${esc(a.nome)}</a>`).join('')}</div>
+      <div class="ed-acoes"><button class="ed-b ed-btnp" data-part="${esc(e.id)}" onclick="edParticipar(this.dataset.part)">Participar do edital</button><span class="ed-status" style="margin:0">Abre o projeto em blocos já preenchido com os dados deste edital</span></div>
+    </div>`; }).join('');
+  edEnriquecer(lista);
+}
+async function edEnriquecer(lista){
+  if(ED.enriquecendo) return; ED.enriquecendo = true;
+  try{
+    const pend = lista.filter(e=>!ED.infos[e.id] && edPdfDe(e)).slice(0,8);
+    for(const e of pend){
+      if(ED.sub!=='tjmg' || !document.getElementById('ed-lista')) break;       // saiu da aba: para de consultar
+      try{ const r = await apiEdital('editalInfo', {url:edPdfDe(e).url}); const d = r.info||{}; ED.infos[e.id] = d.erro ? {erro:d.erro} : d; }
+      catch(err){ ED.infos[e.id] = {erro:String(err.message||err)}; }
+      try{ localStorage.setItem(ED_LS_I, JSON.stringify(ED.infos)); }catch(x){}
+      edRenderLista();
+    }
+  } finally { ED.enriquecendo = false; }
+}
+async function edAtualizar(){
+  ED.carregando = true; ED.erro = ''; ED.status = 'Consultando o portal do TJMG…';
+  const bt = document.getElementById('ed-btn-atualizar'); if(bt) bt.disabled = true;
+  const st = document.getElementById('ed-status'); if(st) st.textContent = ED.status;
+  const ms = document.getElementById('ed-msg'); if(ms) ms.innerHTML = '';
+  try{
+    const d = await apiEdital('editaisListar');
+    ED.editais = d.editais||[]; ED.pronto = true;
+    ED.status = `Atualizado ${new Date().toLocaleTimeString('pt-BR')} · ${d.total} publicações em ${d.paginas} página(s) do TJMG`;
+    if(ED.primeira){ ED.editais.forEach(e=>ED.vistos.add(e.id)); edSalvarVistos(); ED.primeira = false; }
+  }catch(e){
+    ED.erro = `Não foi possível ler o portal do TJMG agora (${e.message}). Abra a fonte pelo link à esquerda.`; ED.status = '';
+  }
+  ED.carregando = false;
+  if(ED.sub==='tjmg'){ edRenderTjmg(); }
+}
+function edParticipar(id){
+  const e = ED.editais.find(x=>x.id===id); if(!e) return;
+  const d = btoa(unescape(encodeURIComponent(JSON.stringify({edital:e, info:ED.infos[e.id]||null}))));
+  ED.projetoUrl = ED_PROJETO + '/?d=' + encodeURIComponent(d);
+  edSub('projeto');
+}
+function edCsv(){
+  const l = edFiltrar(); if(!l.length){ alert('Nada para exportar.'); return; }
+  const cab = ['Comarca','Título','Situação','Início','Fim','E-mail','Resumo','Página','Edital (PDF)'];
+  const linhas = l.map(e=>[e.comarca,e.titulo,edSituacao(e),edFmt(e.inicio),edFmt(e.fim),e.email||'',e.resumo||'',e.detalhe||'',((e.arquivos||[])[0]||{}).url||''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';'));
+  const blob = new Blob(['\ufeff'+[cab.join(';'),...linhas].join('\n')],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'editais-foruns-'+edHoje()+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 
 // ================= ABA CARTA DE SITUAÇÃO (P3) =================
