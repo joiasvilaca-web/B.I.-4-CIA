@@ -1057,7 +1057,8 @@ const CT_TIPOS = {
   recurso:['Recursos (viaturas)','Recurso',''],
   horario:['Horários','Horário (HH:MM)',''],
   faixa:['Faixas horárias','Texto',''],
-  assinatura:['Assinatura','Nome e posto','Cargo']
+  assinatura:['Assinatura','Nome e posto','Cargo'],
+  bairro:['Bairros (Patrulhamento)','Bairro','']
 };
 
 function ctInjetarCss(){
@@ -1151,6 +1152,20 @@ function ctSetAssinatura(id){
   const r = (CT.listas.assinatura||[]).find(x=>String(x.id)===String(id)); if(!r) return;
   CT.dados.assinatura = {valor:r.valor, extra:r.extra||''}; CT.salva = false;
   const sj = document.getElementById('ct-sujo'); if(sj) sj.style.display = 'block';
+}
+function ctNorm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+function ctOptsBairro(){
+  return '<option value="">＋ Bairro…</option>' + (CT.listas.bairro||[]).map(r=>`<option value="${esc(r.valor)}">${esc(r.valor)}</option>`).join('');
+}
+// escolhe um bairro na lista suspensa e acrescenta ao campo Patrulhamento (separados por "/"), sem repetir
+function ctAddBairro(k,i,sel){
+  const v = sel.value; sel.value = ''; if(!v) return;
+  const r = CT.dados[k] && CT.dados[k][i]; if(!r) return;
+  const partes = String(r.patrulhamento||'').split('/').map(t=>t.trim()).filter(Boolean);
+  if(!partes.some(t=>ctNorm(t)===ctNorm(v))) partes.push(v);
+  r.patrulhamento = partes.join('/');
+  const el = document.getElementById(`ct-pat-${k}-${i}`); if(el) el.value = r.patrulhamento;
+  CT.salva = false; const sj = document.getElementById('ct-sujo'); if(sj) sj.style.display = 'block';
 }
 function ctOptsFaixa(atual){
   const vals = ctVals('faixa'); let h = `<option value="">—</option>`;
@@ -1336,7 +1351,8 @@ function ctLinhaOp(k,i,r){
     <select title="Faixa horária" onchange="ctSet('${k}',${i},'faixa',this.value,false,true)">${ctOptsFaixa(r.faixa)}</select>
     ${r.faixa==='__HORA__' ? `<select title="Das" onchange="ctSet('${k}',${i},'hi',this.value,true)">${ctOpts(hs,r.hi,'Das')}</select><select title="Às" onchange="ctSet('${k}',${i},'hf',this.value,true)">${ctOpts(hs,r.hf,'Às')}</select>` : ''}
     <select title="Recurso" onchange="ctSet('${k}',${i},'recurso',this.value,true)">${ctOpts(ctRecursosTurno(k),r.recurso,'Recurso')}</select>
-    <input type="text" placeholder="Patrulhamento (bairros)" value="${esc(r.patrulhamento)}" style="width:200px" oninput="ctSet('${k}',${i},'patrulhamento',this.value,true)">
+    <input type="text" id="ct-pat-${k}-${i}" placeholder="Patrulhamento (bairros)" value="${esc(r.patrulhamento)}" style="width:250px" oninput="ctSet('${k}',${i},'patrulhamento',this.value,true)">
+    <select title="Escolha um bairro para incluir no Patrulhamento" style="width:175px" onchange="ctAddBairro('${k}',${i},this)">${ctOptsBairro()}</select>
     <button class="ct-x" title="Remover" onclick="ctRemover('${k}',${i})">🗑</button></div>`;
 }
 function ctCard(titulo, k, linhas, rotuloAdd, sub){
@@ -1481,8 +1497,9 @@ async function ctAbrirListas(aba){
   const pode = CT.podeEditar;
   abrirModal(`<h3 style="margin-top:0">⚙️ Listas da carta</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${Object.keys(CT_TIPOS).map(k=>`<button class="btn ${k===t?'':'secundario'}" style="padding:4px 10px;font-size:12px" onclick="ctAbrirListas('${k}')">${CT_TIPOS[k][0]}</button>`).join('')}</div>
+    ${itens.length>12 ? `<div class="ct-row"><input type="text" id="cl-filtro" placeholder="🔎 Filtrar esta lista (${itens.length} itens)…" style="width:100%;max-width:100%" oninput="ctFiltrarLista(this.value)"></div>` : ''}
     <div id="ct-listas-corpo" style="max-height:52vh;overflow:auto">
-      ${itens.map((r,i)=>`<div class="ct-row"><input type="text" id="cl-v-${i}" value="${esc(r.valor)}" style="width:${info[2]?'300':'360'}px" ${pode?'':'disabled'} placeholder="${esc(info[1])}">
+      ${itens.map((r,i)=>`<div class="ct-row" data-f="${esc(ctNorm(r.valor))}"><input type="text" id="cl-v-${i}" value="${esc(r.valor)}" style="width:${info[2]?'300':'360'}px" ${pode?'':'disabled'} placeholder="${esc(info[1])}">
         ${info[2] ? `<input type="text" id="cl-e-${i}" value="${esc(r.extra||'')}" style="width:150px" ${pode?'':'disabled'} placeholder="${esc(info[2])}">` : ''}
         ${pode ? `<button class="btn secundario" style="padding:4px 10px" onclick="ctListaSalvar(${i})">Salvar</button><button class="ct-x" onclick="ctListaExcluir(${i})">🗑</button>` : ''}</div>`).join('') || '<div style="color:#999;font-size:13px">Lista vazia.</div>'}
     </div>
@@ -1490,6 +1507,10 @@ async function ctAbrirListas(aba){
       ${info[2] ? `<input type="text" id="cl-novo-e" placeholder="${esc(info[2])}" style="width:150px">` : ''}
       <button class="btn" style="padding:4px 12px" onclick="ctListaNovo()">＋ Incluir</button></div>` : '<div style="font-size:12px;color:#888;margin-top:8px">Seu usuário só visualiza as listas.</div>'}
     <div style="text-align:right;margin-top:12px"><button class="btn secundario" onclick="fecharModal(); if(CT.modo==='form') ctRender(); else ctRenderLista();">Fechar</button></div>`);
+}
+function ctFiltrarLista(q){
+  const n = ctNorm(q);
+  document.querySelectorAll('#ct-listas-corpo .ct-row').forEach(el=>{ el.style.display = (!n || (el.dataset.f||'').includes(n)) ? '' : 'none'; });
 }
 async function ctRecarregarListas(){ const l = await apiCarta('cartaListas'); CT.listas = l.listas; }
 async function ctListaSalvar(i){
