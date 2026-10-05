@@ -1136,6 +1136,22 @@ function ctOptsSetor(atual){
   grupos.forEach(([nome,vals])=>{ if(vals.length) h += `<optgroup label="${nome}">`+vals.map(v=>`<option value="${esc(v)}" ${v===atual?'selected':''}>${esc(v)}</option>`).join('')+`</optgroup>`; });
   return h;
 }
+function ctAssinaturaAtual(D){
+  const d = D || (CT.dados||{});
+  if(d.assinatura && d.assinatura.valor) return d.assinatura;
+  return (CT.listas.assinatura||[])[0] || {valor:'', extra:''};
+}
+function ctOptsAssinatura(atual){
+  const l = CT.listas.assinatura||[]; let h = '';
+  if(atual && atual.valor && !l.some(r=>r.valor===atual.valor && (r.extra||'')===(atual.extra||''))) h += `<option value="" selected>${esc(atual.valor)}${atual.extra?' — '+esc(atual.extra):''}</option>`;
+  l.forEach(r=>{ const sel = atual && r.valor===atual.valor && (r.extra||'')===(atual.extra||''); h += `<option value="${r.id}" ${sel?'selected':''}>${esc(r.valor)}${r.extra?' — '+esc(r.extra):''}</option>`; });
+  return h || '<option value="">(cadastre em ⚙️ Listas → Assinatura)</option>';
+}
+function ctSetAssinatura(id){
+  const r = (CT.listas.assinatura||[]).find(x=>String(x.id)===String(id)); if(!r) return;
+  CT.dados.assinatura = {valor:r.valor, extra:r.extra||''}; CT.salva = false;
+  const sj = document.getElementById('ct-sujo'); if(sj) sj.style.display = 'block';
+}
 function ctOptsFaixa(atual){
   const vals = ctVals('faixa'); let h = `<option value="">—</option>`;
   vals.forEach(v=>{ h += `<option value="${esc(v)}" ${v===atual?'selected':''}>${esc(v)}</option>`; });
@@ -1277,7 +1293,7 @@ async function ctSalvar(silencioso){
     await apiCarta('cartaSalvar', {data:CT.data, dados:CT.dados});
     CT.salva = true; CT.aviso = ''; CT.dataSalva = CT.data;
     try{ const r = await apiCarta('cartaListar'); CT.lista = r.cartas||[]; CT.datas = CT.lista.map(c=>c.data); }catch(e){}
-    ctRender();
+    if(CT.modo==='form') ctRender();
     if(!silencioso){ const b=document.getElementById('ct-msg'); if(b){ b.textContent='✅ Carta salva.'; setTimeout(()=>{ if(b) b.textContent=''; }, 2500); } }
     return true;
   }catch(e){ alert(e.message); return false; }
@@ -1352,6 +1368,9 @@ function ctRender(){
     </div>
     ${ctCard('Quadro de Operações Policiais — DIA','opsDia',D.opsDia.map((r,i)=>ctLinhaOp('opsDia',i,r)),'Incluir operação','Natureza • BPM • CIA • Faixa horária • Recurso • Patrulhamento')}
     ${ctCard('Quadro de Operações Policiais — NOITE','opsNoite',D.opsNoite.map((r,i)=>ctLinhaOp('opsNoite',i,r)),'Incluir operação','Natureza • BPM • CIA • Faixa horária • Recurso • Patrulhamento')}
+    <div class="ct-card"><h4>✍️ Assinatura da carta</h4>
+      <div class="ct-row"><select id="ct-ass" style="min-width:420px;max-width:100%" onchange="ctSetAssinatura(this.value)">${ctOptsAssinatura(ctAssinaturaAtual())}</select>
+        <span style="font-size:12px;color:#777">Quem assina esta carta. Para incluir mais nomes: ⚙️ Listas → Assinatura.</span></div></div>
     <div style="margin:14px 0"><button class="btn" style="background:#2c4870" onclick="ctGerar()">📄 Gerar carta</button></div>`;
 }
 
@@ -1381,7 +1400,7 @@ function ctRemover(k,i){ CT.dados[k].splice(i,1); CT.salva = false; ctRender(); 
 // ---------- carta pronta ----------
 function ctHtmlCarta(D, data){
   const nome = v => (v && String(v).trim()) ? esc(v) : '.';
-  const ass = ((CT.listas.assinatura||[])[0]) || {valor:'', extra:''};
+  const ass = ctAssinaturaAtual(D);
   const linhasPessoa = arr => arr.map(r=>`<tr class="alt1"><td class="b">${esc(r.turno)}</td><td colspan="5">${nome(r.oficial)}</td><td colspan="4">${esc(r.fone)}</td></tr>`).join('');
   const ev = D.eventos.length ? D.eventos : [{}];
   const linhasEv = ev.map(r=>`<tr class="alt3"><td colspan="2">${esc(r.local||'')}</td><td colspan="2">${esc(r.evento||'')}</td><td>${esc(ctDataBR(r.data))}</td><td>${esc(r.ini||'')}</td><td>${esc(r.fim||'')}</td><td>${esc(r.efetivo||'')}</td><td colspan="2">${esc(r.os||'')}</td></tr>`).join('');
@@ -1432,14 +1451,25 @@ async function ctGerar(){
   ov = document.createElement('div'); ov.id = 'carta-overlay';
   ov.innerHTML = `<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap">
       <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+      <label style="color:#ddd;font-size:12px;display:flex;align-items:center;gap:6px;margin:0;width:auto">✍️ Assina:
+        <select id="ct-ass-ov" style="padding:5px;border-radius:6px;max-width:340px;width:auto" onchange="ctTrocarAssinaturaOv(this.value)">${ctOptsAssinatura(ctAssinaturaAtual())}</select></label>
       <button class="btn secundario" onclick="ctFecharCarta()">✖ Voltar para editar</button>
       <span style="color:#ccc;font-size:12px">Na janela de impressão, escolha o destino “Salvar como PDF”.</span></div>
     <div id="carta-folha">${ctHtmlCarta(CT.dados, CT.data)}</div>`;
   document.body.appendChild(ov);
   printPagina('size:A4 landscape;margin:6mm');
-  const f = document.getElementById('carta-folha');
+  ctAjustarZoom();
+}
+function ctAjustarZoom(){
+  const f = document.getElementById('carta-folha'); if(!f) return;
+  f.style.setProperty('--ctz', '1');
   const h = f.scrollHeight - 20, limite = 680;           // altura útil de uma página A4 paisagem (~198mm), com folga
   f.style.setProperty('--ctz', h > limite ? (limite/h).toFixed(3) : '1');
+}
+async function ctTrocarAssinaturaOv(id){
+  ctSetAssinatura(id);
+  const f = document.getElementById('carta-folha'); if(f){ f.innerHTML = ctHtmlCarta(CT.dados, CT.data); ctAjustarZoom(); }
+  if(CT.podeEditar) await ctSalvar(true);               // grava junto com a carta, para valer nas próximas vezes
 }
 function ctFecharCarta(){ const ov = document.getElementById('carta-overlay'); if(ov) ov.remove(); printPagina(''); }
 
