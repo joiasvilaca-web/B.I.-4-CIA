@@ -1324,14 +1324,33 @@ function ctLinhaPessoa(k,i,r){
     <input type="text" id="ct-fone-${k}-${i}" placeholder="Telefone" value="${esc(r.fone)}" style="width:140px" oninput="ctSet('${k}',${i},'fone',this.value,true)">
     <button class="ct-x" title="Remover" onclick="ctRemover('${k}',${i})">🗑</button></div>`;
 }
+// Início/Término do evento: escolhe um horário da lista OU "Definir horário…" para marcar qualquer hora (ex.: 19:30)
+function ctCampoHora(i,campo,r,rotulo){
+  const hs = ctVals('horario'), v = r[campo]||'';
+  const livre = !!r[campo+'Livre'] || (!!v && !hs.includes(v));
+  let h = `<select title="${rotulo}" onchange="ctHoraSel(${i},'${campo}',this.value)"><option value="">${rotulo}</option>`;
+  hs.forEach(x=>{ h += `<option value="${esc(x)}" ${(!livre && x===v)?'selected':''}>${esc(x)}</option>`; });
+  h += `<option value="__HORA__" ${livre?'selected':''}>⏱ Definir horário…</option></select>`;
+  if(livre) h += `<input type="time" title="${rotulo}: escolha qualquer horário" value="${esc(v)}" onchange="ctHoraLivre(${i},'${campo}',this.value)">`;
+  return h;
+}
+function ctHoraSel(i,campo,val){
+  const r = CT.dados.eventos[i]; if(!r) return;
+  if(val==='__HORA__'){ r[campo+'Livre'] = true; if(ctVals('horario').includes(r[campo])) r[campo] = ''; }
+  else { r[campo+'Livre'] = false; r[campo] = val; }
+  CT.salva = false; ctRender();
+}
+function ctHoraLivre(i,campo,val){
+  const r = CT.dados.eventos[i]; if(!r) return;
+  r[campo] = val; CT.salva = false;
+  const sj = document.getElementById('ct-sujo'); if(sj) sj.style.display = 'block';
+}
 function ctLinhaEvento(i,r){
-  const hs = ctVals('horario');
   return `<div class="ct-row">
     <input type="text" placeholder="Local" value="${esc(r.local)}" style="width:150px" oninput="ctSet('eventos',${i},'local',this.value,true)">
     <input type="text" placeholder="Evento / Operação" value="${esc(r.evento)}" style="width:200px" oninput="ctSet('eventos',${i},'evento',this.value,true)">
     <input type="date" value="${esc(r.data)}" onchange="ctSet('eventos',${i},'data',this.value,true)">
-    <select title="Início" onchange="ctSet('eventos',${i},'ini',this.value,true)">${ctOpts(hs,r.ini,'Início')}</select>
-    <select title="Término" onchange="ctSet('eventos',${i},'fim',this.value,true)">${ctOpts(hs,r.fim,'Término')}</select>
+    ${ctCampoHora(i,'ini',r,'Início')}${ctCampoHora(i,'fim',r,'Término')}
     <input type="text" placeholder="Efetivo" value="${esc(r.efetivo)}" style="width:80px" oninput="ctSet('eventos',${i},'efetivo',this.value,true)">
     <input type="text" placeholder="Ordem de Serviço / Memorando" value="${esc(r.os)}" style="width:190px" oninput="ctSet('eventos',${i},'os',this.value,true)">
     <button class="ct-x" title="Remover" onclick="ctRemover('eventos',${i})">🗑</button></div>`;
