@@ -368,6 +368,7 @@ async function renderArea(areaId, opts={}){
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='carta'?'ativo':''}" data-tab="carta">📄 Carta de Situação</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='os'?'ativo':''}" data-tab="os">📑 O.S.</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='produtividade'?'ativo':''}" data-tab="produtividade">📈 Produtividade</div>` : ''}
+      ${areaId==='P2' ? `<div class="tab-area ${abaArea==='infratores'?'ativo':''}" data-tab="infratores">🕸️ Infratores</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='aniversario'?'ativo':''}" data-tab="aniversario">🎂 Aniversários</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='edital'?'ativo':''}" data-tab="edital">📑 Edital</div>` : ''}
     </div>
@@ -383,6 +384,7 @@ async function renderArea(areaId, opts={}){
   if(abaArea==='produtividade' && areaId==='P3') return renderAreaProdutividade(areaId, acesso);
   if(abaArea==='aniversario' && areaId==='P5') return renderAreaAniversario(areaId, acesso);
   if(abaArea==='edital' && areaId==='P5') return renderAreaEdital(areaId, acesso);
+  if(abaArea==='infratores' && areaId==='P2') return renderAreaInfratores(areaId, acesso);
 
   let d;
   try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
@@ -3253,6 +3255,653 @@ function prodRelatorio(){
   document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
 }
 function prodFecharRel(){ const ov=document.getElementById('prod-overlay'); if(ov) ov.remove(); printPagina(null); }
+
+// ================= ABA INFRATORES (P2) =================
+const INF_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-infratores";
+async function apiInf(op, params={}){
+  const r = await fetch(INF_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify({op, token: ST.token, ...params})
+  });
+  const d = await r.json();
+  if(!d.ok){ throw new Error(d.erro || 'Erro desconhecido'); }
+  return d;
+}
+const INF_DEF = {
+  catalogos:{
+    crimes:[['Tráfico de drogas',8],['Associação ao tráfico',7],['Homicídio',10],['Tentativa de homicídio',9],['Latrocínio',10],['Roubo',7],['Roubo a veículo',7],['Furto',3],['Receptação',4],
+      ['Porte/posse ilegal de arma',6],['Extorsão',7],['Organização criminosa',8],['Ameaça',3],['Lesão corporal',4],['Violência doméstica',5],['Estelionato',3],['Estupro',10],['Corrupção de menores',5],['Resistência/desacato',2],['Dano',2]],
+    faccoes:['CV','PCC','TCP','ADA'],
+    areas:['Centro','Zona Norte','Zona Sul','Zona Leste','Zona Oeste','Zona Rural'],
+    niveis:[[1,'Liderança / chefia'],[2,'Gerência regional / coordenação'],[3,'Gerente de ponto / distribuidor'],[4,'Soldado / vendedor'],[5,'Olheiro / apoio']],
+    vinculos:[['Subordinação',1],['Parceria / comparsa',0],['Familiar',0],['Cônjuge / companheiro(a)',0],['Fornecedor',0],['Cliente / usuário',0],['Receptador',0],['Rival / conflito',0],['Mesma unidade prisional',0]],
+    locais:['Atuação','Ponto de venda','Esconderijo','Residência secundária','Ponto de encontro','Outro'],
+    bairros:[]
+  },
+  pesos:{gravidade:35,reincidencia:20,hierarquia:15,rede:15,risco:10,situacao:5}
+};
+const INF_STATUS = {solto:'Solto',preso:'Preso',foragido:'Foragido',monitorado:'Monitorado',morto:'Morto'};
+const INF_STCOR = {solto:'#c77d2b',preso:'#777',foragido:'#a4202a',monitorado:'#2c4870',morto:'#222'};
+const INF_PAL = ['#a4202a','#2c4870','#33502f','#c77d2b','#6b4c9a','#0e8a8a','#b8588a','#8f7f45','#5a6b7a','#d1495b','#3d8b37','#7a5230'];
+const INF_VCOR = ['#a4202a','#2c4870','#6b4c9a','#b8588a','#c77d2b','#0e8a8a','#8f7f45','#d1495b','#5a6b7a'];
+const INF_VCOR_FIXA = {'Subordinação':'#a4202a','Rival / conflito':'#222'};
+let INF = { filAberto:true, ok:false, podeEditar:false, pessoas:[], vinculos:[], locais:[], registros:[], config:{}, cat:null, pesos:null, sub:'cadastro', ord:{k:'score',d:-1}, pag:0, mapa:null, net:null, charts:{}, ver:0, cache:null, libErr:{}, bairrosCarta:[],
+  F:{busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false},
+  M:{res:true,loc:true,reg:false,vin:true,lig:false,cor:'faccao'}, T:{layout:'fisica',isolados:false,tam:'score'}, P:{modo:'quant',dim:'pessoa',med:'ocorr'} };
+
+// ---------- utilitarios ----------
+const infCat = ()=>INF.cat;
+function infMesclar(def, v){ const o=JSON.parse(JSON.stringify(def)); if(v&&typeof v==='object'){ Object.keys(v).forEach(k=>{ if(v[k]!==undefined&&v[k]!==null) o[k]=v[k]; }); } return o; }
+function infNomeExib(p){ return p.alcunha ? `${p.nome} “${p.alcunha}”` : p.nome; }
+function infCurto(p){ if(p.alcunha) return p.alcunha; const t=(p.nome||'').split(' ').filter(Boolean); return t.length>1 ? t[0]+' '+t[t.length-1] : (t[0]||''); }
+function infNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function infPesoCrime(nome){ const c=INF.cat.crimes.find(x=>x[0]===nome); return c ? Number(c[1])||5 : 5; }
+function infCorFaccao(f){ if(!f) return '#9a9a9a'; const l=infFaccoes(); const i=l.indexOf(f); return INF_PAL[(i<0?l.length:i)%INF_PAL.length]; }
+function infFaccoes(){ const s=new Set(INF.cat.faccoes); INF.pessoas.forEach(p=>{ if(p.faccao) s.add(p.faccao); }); return [...s]; }
+function infAreas(){ const s=new Set(INF.cat.areas); INF.pessoas.forEach(p=>{ if(p.area) s.add(p.area); }); return [...s].sort(); }
+function infBairros(){ const s=new Set([...(INF.cat.bairros||[]),...INF.bairrosCarta]); INF.pessoas.forEach(p=>{ if(p.bairro) s.add(p.bairro); }); INF.locais.forEach(l=>{ if(l.bairro) s.add(l.bairro); }); INF.registros.forEach(r=>{ if(r.bairro) s.add(r.bairro); }); return [...s].sort((a,b)=>a.localeCompare(b,'pt-BR')); }
+function infCorVinculo(tipo){ if(INF_VCOR_FIXA[tipo]) return INF_VCOR_FIXA[tipo]; const i=INF.cat.vinculos.findIndex(v=>v[0]===tipo); return INF_VCOR[(i<0?0:i)%INF_VCOR.length]; }
+function infEhSub(tipo){ const v=INF.cat.vinculos.find(x=>x[0]===tipo); return !!(v&&v[1]); }
+function infDataBR(iso){ if(!iso) return ''; const [y,m,d]=String(iso).slice(0,10).split('-'); return d+'/'+m+'/'+y; }
+function infIdade(n){ if(!n) return ''; const d=new Date(n+'T12:00:00'); const h=new Date(); let a=h.getFullYear()-d.getFullYear(); if(h<new Date(h.getFullYear(),d.getMonth(),d.getDate())) a--; return a; }
+function infToast(msg, erro){ let t=document.getElementById('inf-toast'); if(!t){ t=document.createElement('div'); t.id='inf-toast'; t.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:20000;padding:10px 18px;border-radius:8px;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.3)'; document.body.appendChild(t); } t.style.background=erro?'#a4202a':'#33502f'; t.textContent=msg; t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',erro?6000:2600); }
+
+// carrega bibliotecas externas sob demanda (Leaflet e vis-network) com alternativa de CDN
+function infLib(nome){
+  const L = { leaflet:{ test:()=>window.L&&window.L.map, css:['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css','https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'], js:['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js','https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'] },
+              vis:{ test:()=>window.vis&&window.vis.Network, js:['https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js','https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js'] } }[nome];
+  if(L.test()) return Promise.resolve(true);
+  if(INF['_p'+nome]) return INF['_p'+nome];
+  const carrega=(tag,url)=>new Promise(res=>{ const e=document.createElement(tag); if(tag==='script'){ e.src=url; } else { e.rel='stylesheet'; e.href=url; } e.onload=()=>res(true); e.onerror=()=>res(false); document.head.appendChild(e); });
+  INF['_p'+nome] = (async()=>{
+    if(L.css){ for(const u of L.css){ if(await carrega('link',u)) break; } }
+    for(const u of L.js){ if(await carrega('script',u) && L.test()) return true; }
+    INF['_p'+nome]=null; return false;
+  })();
+  return INF['_p'+nome];
+}
+const INF_AVISO_LIB = n=>`<p style="color:#a4202a;font-size:12px;padding:12px;background:#f7dada;border-radius:6px">⚠️ Não consegui carregar a biblioteca de ${n}. Isso costuma ocorrer quando a rede bloqueia o endereço do CDN (cdn.jsdelivr.net / cdnjs.cloudflare.com / unpkg.com). Peça à TI para liberar, ou tente por outra rede.</p>`;
+
+// ---------- geocodificacao (OpenStreetMap / Nominatim) ----------
+let _infGeoUlt = 0;
+async function infGeocodificar(q){
+  q = String(q||'').trim(); if(!q) return [];
+  let cache={}; try{ cache=JSON.parse(localStorage.getItem('bi4cia_inf_geo')||'{}'); }catch(e){}
+  if(cache[q]) return cache[q];
+  const esp = Math.max(0, 1100-(Date.now()-_infGeoUlt)); if(esp) await new Promise(r=>setTimeout(r,esp)); _infGeoUlt=Date.now();
+  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=br&viewbox=-43.75,-21.45,-43.0,-22.05&q='+encodeURIComponent(q);
+  const r = await fetch(url, {headers:{'Accept-Language':'pt-BR'}});
+  if(!r.ok) throw new Error('Serviço de mapas indisponível ('+r.status+')');
+  const j = (await r.json()).map(x=>({lat:+x.lat, lng:+x.lon, nome:x.display_name, bairro:(x.address&&(x.address.suburb||x.address.neighbourhood||x.address.quarter||x.address.city_district))||''}));
+  try{ cache[q]=j; const ks=Object.keys(cache); if(ks.length>200) delete cache[ks[0]]; localStorage.setItem('bi4cia_inf_geo', JSON.stringify(cache)); }catch(e){}
+  return j;
+}
+// janela para escolher um ponto no mapa (clicar ou buscar endereco)
+async function infEscolherPonto(opc, cb){
+  let ov = document.getElementById('inf-pick'); if(ov) ov.remove();
+  ov = document.createElement('div'); ov.id='inf-pick'; ov.className='if-ov';
+  ov.innerHTML = `<div class="if-ovbox" style="max-width:900px;width:96vw"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+     <b>${esc(opc.titulo||'Escolher ponto no mapa')}</b><input id="ifp-q" style="flex:1;min-width:220px" placeholder="Endereço para buscar (rua, número, bairro)" value="${esc(opc.query||'')}">
+     <button class="btn secundario if-sm" id="ifp-b">🔎 Buscar</button></div>
+     <div id="ifp-res" style="font-size:12px;margin-bottom:6px"></div>
+     <div id="ifp-map" style="height:420px;border-radius:8px;border:1px solid #ccc"></div>
+     <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap"><span id="ifp-co" style="font-size:12px;color:#666">Clique no mapa para marcar o ponto.</span>
+     <span><button class="btn if-sm" id="ifp-ok" disabled>✔ Usar este ponto</button> <button class="btn secundario if-sm" id="ifp-x">Cancelar</button></span></div></div>`;
+  document.body.appendChild(ov);
+  document.getElementById('ifp-x').onclick=()=>ov.remove();
+  if(!(await infLib('leaflet'))){ document.getElementById('ifp-map').innerHTML=INF_AVISO_LIB('mapa'); return; }
+  const ini = (opc.lat&&opc.lng) ? [opc.lat,opc.lng] : [-21.7642,-43.3503];
+  const map = L.map('ifp-map',{zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}).setView(ini, (opc.lat&&opc.lng)?16:12,{animate:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  let mk=null, sel=null, bairro='';
+  const pos=(lat,lng,b)=>{ sel={lat:+lat.toFixed(6),lng:+lng.toFixed(6)}; if(b) bairro=b; if(mk) mk.setLatLng([lat,lng]); else mk=L.marker([lat,lng]).addTo(map); document.getElementById('ifp-co').textContent=`Ponto: ${sel.lat}, ${sel.lng}`+(bairro?` · ${bairro}`:''); document.getElementById('ifp-ok').disabled=false; };
+  if(opc.lat&&opc.lng) pos(opc.lat,opc.lng);
+  map.on('click',e=>pos(e.latlng.lat,e.latlng.lng));
+  const buscar=async()=>{ const q=document.getElementById('ifp-q').value.trim(); if(!q) return; const R=document.getElementById('ifp-res'); R.textContent='Buscando…';
+    try{ let q2=q; if(!/juiz de fora/i.test(q2)) q2+=', Juiz de Fora, MG'; const r=await infGeocodificar(q2);
+      if(!r.length){ R.innerHTML='<span style="color:#a4202a">Endereço não encontrado. Tente só a rua + bairro, ou clique direto no mapa.</span>'; return; }
+      R.innerHTML=r.map((x,i)=>`<div><a href="#" data-i="${i}">📍 ${esc(x.nome)}</a></div>`).join('');
+      R.querySelectorAll('a').forEach(a=>a.onclick=e=>{ e.preventDefault(); const x=r[+a.dataset.i]; map.setView([x.lat,x.lng],17,{animate:false}); pos(x.lat,x.lng,x.bairro); });
+      map.setView([r[0].lat,r[0].lng],16,{animate:false}); pos(r[0].lat,r[0].lng,r[0].bairro);
+    }catch(e){ R.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+  document.getElementById('ifp-b').onclick=buscar; document.getElementById('ifp-q').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); buscar(); } });
+  document.getElementById('ifp-ok').onclick=()=>{ ov.remove(); cb({lat:sel.lat,lng:sel.lng,bairro}); };
+  setTimeout(()=>{ if(document.getElementById('ifp-map')) map.invalidateSize({animate:false}); },150);
+  if(opc.query && !(opc.lat&&opc.lng)) buscar();
+}
+
+// ---------- calculo (derivados, filtros, escore) ----------
+function infRecalc(){
+  const P=INF.pessoas, byId=new Map(P.map(p=>[p.id,p]));
+  const adj=new Map(P.map(p=>[p.id,[]])); const sup=new Map(), sub=new Map();
+  INF.vinculos.forEach(v=>{ if(!byId.has(v.a_id)||!byId.has(v.b_id)) return; adj.get(v.a_id).push(v); adj.get(v.b_id).push(v);
+    if(infEhSub(v.tipo) && v.a_superior){ sub.set(v.a_id,(sub.get(v.a_id)||0)+1); sup.set(v.b_id,(sup.get(v.b_id)||0)+1); } });
+  const regs=new Map(), locs=new Map(); INF.registros.forEach(r=>{ (regs.get(r.pessoa_id)||regs.set(r.pessoa_id,[]).get(r.pessoa_id)).push(r); });
+  INF.locais.forEach(l=>{ (locs.get(l.pessoa_id)||locs.set(l.pessoa_id,[]).get(l.pessoa_id)).push(l); });
+  INF.cache={byId,adj,sub,sup,regs,locs,score:new Map()};
+  P.forEach(p=>INF.cache.score.set(p.id, infScoreCalc(p)));
+}
+// crimes de uma pessoa: tipo -> quantidade (registros; etiquetas do perfil contam 1 se nao houver registro daquele tipo)
+function infCrimesDe(p, de, ate){
+  const m={}; (INF.cache.regs.get(p.id)||[]).forEach(r=>{ if(de && r.data && r.data<de) return; if(ate && r.data && r.data>ate) return; if((de||ate)&&!r.data) return; m[r.crime]=(m[r.crime]||0)+1; });
+  if(!de && !ate) (p.crimes||[]).forEach(c=>{ if(!m[c]) m[c]=1; });
+  return m;
+}
+function infScoreCalc(p){
+  const w=INF.pesos, cr=infCrimesDe(p); let g=0, n=0; Object.keys(cr).forEach(c=>{ g+=infPesoCrime(c)*(1+Math.log2(cr[c])); n+=cr[c]; });
+  const grau=(INF.cache.adj.get(p.id)||[]).length, ns=INF.cache.sub.get(p.id)||0;
+  const comp={ gravidade:Math.min(1,g/30), reincidencia:Math.min(1,n/6),
+    hierarquia: p.faccao ? (p.nivel ? (6-Math.min(5,p.nivel))/5 : .3) : (p.nivel ? (6-Math.min(5,p.nivel))/8 : 0),
+    rede:Math.min(1,(grau+2*ns)/10), risco:((p.risco||1)-1)/4, situacao:{solto:1,foragido:1,monitorado:.7,preso:.2,morto:0}[p.status||'solto'] };
+  const tw=Object.values(w).reduce((a,b)=>a+(+b||0),0)||1; let tot=0; Object.keys(comp).forEach(k=>{ tot+=(+w[k]||0)*comp[k]; });
+  if(p.status==='morto') tot=0;
+  return {total:Math.round(tot/tw*1000)/10, comp, n, grau, ns};
+}
+const infScore = p => INF.cache.score.get(p.id) || {total:0,comp:{},n:0,grau:0,ns:0};
+
+function infBFS(foco, prof){
+  const vis=new Set([foco]); let front=[foco];
+  for(let d=0; d<prof && front.length; d++){ const nx=[]; front.forEach(id=>{ (INF.cache.adj.get(id)||[]).forEach(v=>{ const o=v.a_id===id?v.b_id:v.a_id; if(!vis.has(o)){ vis.add(o); nx.push(o); } }); }); front=nx; }
+  return vis;
+}
+function infPassa(p, F, foco){
+  const c=INF.cache;
+  if(foco && !foco.has(p.id)) return false;
+  if(F.busca){ const q=infNorm(F.busca); if(!infNorm([p.nome,p.alcunha,p.documento,p.mae,p.endereco,p.obs,(p.tags||[]).join(' ')].join(' ')).includes(q)) return false; }
+  if(F.area && p.area!==F.area) return false;
+  if(F.bairro && p.bairro!==F.bairro) return false;
+  if(F.faccao==='__sim' && !p.faccao) return false; if(F.faccao==='__nao' && p.faccao) return false; if(F.faccao && !F.faccao.startsWith('__') && p.faccao!==F.faccao) return false;
+  if(F.status && p.status!==F.status) return false;
+  if(F.nivel && String(p.nivel||'')!==String(F.nivel)) return false;
+  if(F.risco && (p.risco||1)<+F.risco) return false;
+  const g=(c.adj.get(p.id)||[]).length; if(F.vinc==='com' && !g) return false; if(F.vinc==='sem' && g) return false;
+  if(F.crime || F.de || F.ate){ const cr=infCrimesDe(p,F.de,F.ate); if(F.crime ? !cr[F.crime] : !Object.keys(cr).length) return false; }
+  if(F.atua){ const b=new Set(); (c.locs.get(p.id)||[]).forEach(l=>{ if(l.bairro) b.add(l.bairro); }); (c.regs.get(p.id)||[]).forEach(r=>{ if(r.bairro) b.add(r.bairro); }); if(!b.has(F.atua)) return false; }
+  return true;
+}
+// conjunto filtrado: pessoas que passam + (opcional) vizinhos diretos para exibir a rede
+function infConjunto(){
+  const F=INF.F; const foco = F.foco ? infBFS(+F.foco, +F.prof||1) : null;
+  const lista = INF.pessoas.filter(p=>infPassa(p,F,foco)); const ids=new Set(lista.map(p=>p.id)); const vis=new Set(ids);
+  if(F.vizinhos) lista.forEach(p=>(INF.cache.adj.get(p.id)||[]).forEach(v=>{ vis.add(v.a_id); vis.add(v.b_id); }));
+  return {lista, ids, vis};
+}
+
+// ---------- entrada ----------
+async function renderAreaInfratores(areaId, acesso){
+  infInjetarCss();
+  const box=document.getElementById('area-corpo');
+  box.innerHTML='<div class="carregando">Carregando cadastro…</div>';
+  try{ await infCarregar(); }catch(e){ box.innerHTML=`<p style="color:#a4202a">${esc(e.message)}</p>`; return; }
+  infRender();
+  // lista de bairros ja usada na Carta de Situacao (opcional; exige P3)
+  try{ const l=await apiCarta('cartaListas'); INF.bairrosCarta=(l.listas.bairro||[]).map(r=>r.valor); }catch(e){}
+}
+async function infCarregar(){
+  const d=await apiInf('infCarregar');
+  INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.config=d.config||{};
+  INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos);
+  infRecalc(); INF.ok=true;
+}
+function infInjetarCss(){
+  if(document.getElementById('inf-css')) return;
+  const s=document.createElement('style'); s.id='inf-css';
+  s.textContent=`
+  .if-sm{padding:5px 11px;font-size:12px}
+  .if-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:10px}
+  .if-kpi{background:#fff;border-radius:8px;padding:8px 11px;border-left:4px solid var(--khaki);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .if-kpi b{display:block;font-size:19px}.if-kpi span{font-size:11px;color:#777}
+  .if-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+  .if-tab{padding:7px 14px;border-radius:18px;background:#fff;border:1px solid #ccc4a8;font-size:13px;cursor:pointer;font-weight:600;color:#555}
+  .if-tab.on{background:var(--verde);color:#fff;border-color:var(--verde)}
+  .if-fil{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
+  .if-fil>div{min-width:120px}.if-fil label{display:block;font-size:11px;color:#666;font-weight:600;margin-bottom:2px}
+  .if-box{background:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:12px}
+  .if-box h3{margin:0 0 8px;font-size:14px}
+  .if-tb{overflow:auto;max-height:560px}.if-tb table{font-size:12px}.if-tb th{white-space:nowrap;position:sticky;top:0;z-index:1;cursor:pointer}
+  .if-tb tr.cl{cursor:pointer}
+  .if-b{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap}
+  .if-chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;background:#efe9d2;margin:0 3px 2px 0;white-space:nowrap}
+  .if-chip.btn2{cursor:pointer;border:1px solid #ccc4a8;background:#fff;padding:3px 10px;font-size:12px}.if-chip.btn2.on{background:var(--verde);color:#fff;border-color:var(--verde)}
+  .if-risco i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ddd;margin-right:2px}.if-risco i.on{background:#a4202a}
+  .if-ov{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px 8px}
+  .if-ovbox{background:#f6f3e8;border-radius:12px;padding:16px 18px;width:min(1000px,98vw);box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .if-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px}
+  .if-grid label{display:block;font-size:11px;color:#666;font-weight:600;margin-bottom:2px}
+  .if-g2{grid-column:span 2}
+  .if-mapwrap{display:grid;grid-template-columns:230px 1fr;gap:10px}
+  @media(max-width:800px){.if-mapwrap{grid-template-columns:1fr}.if-g2{grid-column:auto}}
+  #if-mapa,#if-teia{height:600px;border-radius:10px;border:1px solid #ccc4a8;background:#fff}
+  .if-leg{font-size:11px;display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px}.if-leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+  .if-sig{background:#fff3cd;border:1px solid #e0b84a;border-radius:8px;padding:6px 12px;font-size:11.5px;margin-bottom:10px}
+  .if-ln{display:flex;gap:8px;align-items:center;border-bottom:1px dotted #ddd;padding:5px 0;font-size:12.5px;flex-wrap:wrap}
+  .if-folha{background:#fff;width:210mm;min-height:297mm;margin:14px auto;padding:12mm;box-sizing:border-box;font-family:Arial,sans-serif;font-size:10.5pt;color:#000}
+  .if-folha h1{font-size:14pt;text-align:center;margin:0 0 2pt}.if-folha .sg{text-align:center;color:#a4202a;font-weight:bold;font-size:9pt;margin-bottom:6pt}
+  .if-folha h2{font-size:11pt;border-bottom:1.5px solid #000;margin:10pt 0 4pt;padding-bottom:2pt}
+  .if-folha table{border-collapse:collapse;width:100%;font-size:8.5pt;border-radius:0}.if-folha th,.if-folha td{border:1px solid #000;padding:2pt 4pt;background:#fff;color:#000;text-align:left;text-transform:none;letter-spacing:0}.if-folha th{background:#e3e3e3}
+  .if-folha img{max-width:100%}
+  #inf-overlay{position:fixed;inset:0;z-index:9999;background:#555;overflow:auto}
+  @media print{
+    body > *:not(.ov-print){display:none !important}
+    #inf-overlay{position:static !important;overflow:visible !important;background:#fff !important}
+    #inf-overlay .nao-imprimir{display:none !important}
+    .if-folha{margin:0 !important;width:auto !important;padding:0 !important;min-height:0 !important}
+    html,body{background:#fff !important}
+  }`;
+  document.head.appendChild(s);
+}
+
+// ---------- casca: KPIs, abas, filtros ----------
+function infRender(){
+  const box=document.getElementById('area-corpo'); if(!box) return;
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  const P=INF.pessoas; const F=INF.F;
+  const kp=[['Cadastrados',P.length],['Faccionados',P.filter(p=>p.faccao).length],['Foragidos',P.filter(p=>p.status==='foragido').length],['Presos',P.filter(p=>p.status==='preso').length],
+    ['Vínculos',INF.vinculos.length],['Registros de crimes',INF.registros.length],['Com endereço no mapa',P.filter(p=>p.lat&&p.lng).length]];
+  const tabs=[['cadastro','📋 Cadastro'],['mapa','🗺️ Mapa'],['teia','🕸️ Teia (rede)'],['pareto','📊 Pareto de alvos'],['config','⚙️ Configurações']];
+  const sel=(id,ops,val,todos)=>`<select id="${id}"><option value="">${todos}</option>${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(val)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
+  const crimes=INF.cat.crimes.map(c=>c[0]); const focoOps=P.map(p=>[p.id,infNomeExib(p)]);
+  box.innerHTML=`<div id="inf-root">
+   <div class="if-sig">🔒 <b>Informação sigilosa — uso restrito à atividade de inteligência/segurança pública (LGPD, art. 4º, III).</b> Não compartilhe prints, listas ou exportações fora do serviço.</div>
+   <div class="if-kpis">${kp.map(([l,v])=>`<div class="if-kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+   <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+     <div class="if-tabs" style="margin:0">${tabs.map(([k,l])=>`<span class="if-tab ${INF.sub===k?'on':''}" data-sub="${k}">${l}</span>`).join('')}</div>
+     <div style="display:flex;gap:6px">${INF.sub!=='config'?`<button class="btn secundario if-sm" id="if-fbtn">🔎 Filtros${infNFiltros()?' ('+infNFiltros()+' ativos)':''} ${INF.filAberto?'▴':'▾'}</button>`:''}${INF.podeEditar?'<button class="btn if-sm" id="if-novo">+ Novo infrator</button>':''}<button class="btn secundario if-sm" id="if-csv">⬇️ CSV</button></div></div>
+   ${INF.sub==='config'?'':`<div class="if-fil" id="if-fil" style="${INF.filAberto?'':'display:none'}">
+     <div style="flex:1;min-width:200px"><label>Busca (nome, alcunha, documento, mãe, endereço, observações, etiquetas)</label><input id="ifx-busca" value="${esc(F.busca)}"></div>
+     <div>${'<label>Área</label>'+sel('ifx-area',infAreas(),F.area,'Todas')}</div>
+     <div><label>Bairro (residência)</label>${sel('ifx-bairro',infBairros().filter(b=>P.some(p=>p.bairro===b)),F.bairro,'Todos')}</div>
+     <div><label>Atua no bairro</label>${sel('ifx-atua',infBairros().filter(b=>INF.locais.some(l=>l.bairro===b)||INF.registros.some(r=>r.bairro===b)),F.atua,'Todos')}</div>
+     <div><label>Facção</label>${sel('ifx-faccao',[['__sim','▸ Faccionados'],['__nao','▸ Sem facção'],...infFaccoes()],F.faccao,'Todas')}</div>
+     <div><label>Situação</label>${sel('ifx-status',Object.entries(INF_STATUS),F.status,'Todas')}</div>
+     <div><label>Tipo de crime</label>${sel('ifx-crime',crimes,F.crime,'Todos')}</div>
+     <div><label>Nível hierárquico</label>${sel('ifx-nivel',INF.cat.niveis.map(n=>[n[0],n[0]+' – '+n[1]]),F.nivel,'Todos')}</div>
+     <div><label>Risco mínimo</label>${sel('ifx-risco',[2,3,4,5].map(n=>[n,'≥ '+n]),F.risco,'Qualquer')}</div>
+     <div><label>Vínculos</label>${sel('ifx-vinc',[['com','Com vínculos'],['sem','Sem vínculos']],F.vinc,'Todos')}</div>
+     <div><label>Crimes de</label><input type="date" id="ifx-de" value="${F.de}"></div><div><label>até</label><input type="date" id="ifx-ate" value="${F.ate}"></div>
+     <div style="min-width:200px"><label>🎯 Rede de (foco)</label>${sel('ifx-foco',focoOps,F.foco,'— ninguém —')}</div>
+     <div style="min-width:90px"><label>Profundidade</label>${sel('ifx-prof',[2,3,4].map(n=>[n,n+' graus']),F.prof>1?F.prof:'','1 grau')}</div>
+     <div style="min-width:170px"><label style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="ifx-viz" style="width:auto" ${F.vizinhos?'checked':''}> incluir conexões dos filtrados (mapa/teia)</label></div>
+     <div><button class="btn secundario if-sm" id="ifx-limpar">Limpar</button></div></div>`}
+   <div id="inf-corpo"></div></div>`;
+  box.querySelectorAll('[data-sub]').forEach(e=>e.onclick=()=>{ INF.sub=e.dataset.sub; infRender(); });
+  const n=document.getElementById('if-novo'); if(n) n.onclick=()=>infFicha(null);
+  document.getElementById('if-csv').onclick=infCsv;
+  if(INF.sub!=='config') infLigarFiltros();
+  infCorpo();
+}
+function infNFiltros(){ const F=INF.F; return ['busca','area','bairro','faccao','status','crime','nivel','risco','vinc','de','ate','atua','foco'].filter(k=>F[k]).length+(F.vizinhos?1:0); }
+function infLigarFiltros(){
+  const fb=document.getElementById('if-fbtn'); if(fb) fb.onclick=()=>{ INF.filAberto=!INF.filAberto; document.getElementById('if-fil').style.display=INF.filAberto?'':'none'; fb.textContent='🔎 Filtros'+(infNFiltros()?' ('+infNFiltros()+' ativos)':'')+' '+(INF.filAberto?'▴':'▾'); };
+  const F=INF.F; let tb;
+  const bind=(id,k,num)=>{ const e=document.getElementById(id); if(!e) return; e.addEventListener('input',()=>{ if(k==='busca'){ clearTimeout(tb); tb=setTimeout(()=>{F.busca=e.value; INF.pag=0; infCorpo();},250); return; } F[k]=e.type==='checkbox'?e.checked:e.value; INF.pag=0; infCorpo(); }); };
+  [['ifx-busca','busca'],['ifx-area','area'],['ifx-bairro','bairro'],['ifx-atua','atua'],['ifx-faccao','faccao'],['ifx-status','status'],['ifx-crime','crime'],['ifx-nivel','nivel'],['ifx-risco','risco'],['ifx-vinc','vinc'],['ifx-de','de'],['ifx-ate','ate'],['ifx-foco','foco'],['ifx-prof','prof'],['ifx-viz','vizinhos']].forEach(([i,k])=>bind(i,k));
+  document.getElementById('ifx-limpar').onclick=()=>{ INF.F=Object.assign({}, {busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false}); INF.pag=0; infRender(); };
+}
+function infCorpo(){
+  const c=document.getElementById('inf-corpo'); if(!c) return;
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  Object.values(INF.charts).forEach(x=>{ try{x.destroy();}catch(e){} }); INF.charts={};
+  ({cadastro:infCadastro,mapa:infMapa,teia:infTeia,pareto:infPareto,config:infConfig})[INF.sub](c);
+}
+
+// ---------- cadastro (lista) ----------
+function infBadge(st){ return `<span class="if-b" style="background:${INF_STCOR[st]||'#888'}">${esc(INF_STATUS[st]||st)}</span>`; }
+function infRiscoHtml(r){ r=r||1; return `<span class="if-risco" title="Risco ${r}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=r?'on':''}"></i>`).join('')}</span>`; }
+function infCadastro(c){
+  const {lista}=infConjunto(); const o=INF.ord; const F=INF.F;
+  const val=(p)=> o.k==='score'?infScore(p).total : o.k==='nome'?infNorm(p.nome) : o.k==='risco'?(p.risco||1) : o.k==='nivel'?(p.nivel||99) : o.k==='grau'?infScore(p).grau : o.k==='crimes'?infScore(p).n : infNorm(p[o.k]||'');
+  const L=lista.slice().sort((a,b)=>{ const x=val(a),y=val(b); return (x>y?1:x<y?-1:0)*o.d || a.id-b.id; });
+  const PP=40, np=Math.max(1,Math.ceil(L.length/PP)); if(INF.pag>=np) INF.pag=np-1; const pg=L.slice(INF.pag*PP, INF.pag*PP+PP);
+  const th=(k,l)=>`<th data-o="${k}">${l}${o.k===k?(o.d>0?' ▲':' ▼'):''}</th>`;
+  c.innerHTML=`<div class="if-box"><div style="font-size:12px;color:#666;margin-bottom:6px"><b>${L.length}</b> de ${INF.pessoas.length} cadastrados</div>
+   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('grau','Vínculos')}${th('score','Prioridade')}</tr></thead><tbody>
+   ${pg.map(p=>{ const s=infScore(p); const cr=Object.keys(infCrimesDe(p,F.de,F.ate)); const nv=INF.cat.niveis.find(n=>n[0]===p.nivel);
+     return `<tr class="cl" data-id="${p.id}"><td><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</td>
+      <td>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>${p.faccao_funcao?`<div style="color:#777;font-size:11px">${esc(p.faccao_funcao)}</div>`:''}`:'<span style="color:#aaa">—</span>'}</td>
+      <td title="${esc(nv?nv[1]:'')}">${p.nivel||'—'}${p.cargo?`<div style="color:#777;font-size:11px">${esc(p.cargo)}</div>`:''}</td><td>${infBadge(p.status)}</td><td>${infRiscoHtml(p.risco)}</td>
+      <td>${esc(p.bairro||'')}${p.lat?' 📍':''}</td><td>${esc(p.area||'')}</td><td style="max-width:240px">${cr.slice(0,4).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}${cr.length>4?`<span class="if-chip">+${cr.length-4}</span>`:''}</td>
+      <td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td></tr>`; }).join('')||'<tr><td colspan="10" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
+   </tbody></table></div>
+   <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario if-sm" id="if-ant" ${INF.pag<=0?'disabled':''}>‹</button> Página ${INF.pag+1} de ${np} <button class="btn secundario if-sm" id="if-prox" ${INF.pag>=np-1?'disabled':''}>›</button></div></div>`;
+  c.querySelectorAll('th[data-o]').forEach(t=>t.onclick=()=>{ const k=t.dataset.o; INF.ord=INF.ord.k===k?{k,d:-o.d}:{k,d:(k==='score'||k==='risco'||k==='grau'?-1:1)}; infCorpo(); });
+  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=()=>infFicha(+t.dataset.id));
+  document.getElementById('if-ant').onclick=()=>{INF.pag--;infCorpo();}; document.getElementById('if-prox').onclick=()=>{INF.pag++;infCorpo();};
+}
+function infCsv(){
+  const {lista}=infConjunto(); const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const head=['ID','Nome','Alcunha','Nascimento','Documento','Mãe','Telefone','Endereço','Bairro','Cidade','Área','Latitude','Longitude','Facção','Função na facção','Nível','Cargo','Situação','Risco','Crimes','Vínculos','Prioridade','Etiquetas','Observações'];
+  const lin=lista.map(p=>{ const s=infScore(p); return [p.id,p.nome,p.alcunha,infDataBR(p.nascimento),p.documento,p.mae,p.telefone,p.endereco,p.bairro,p.cidade,p.area,p.lat,p.lng,p.faccao,p.faccao_funcao,p.nivel,p.cargo,INF_STATUS[p.status]||p.status,p.risco,Object.keys(infCrimesDe(p)).join(' | '),s.grau,String(s.total).replace('.',','),(p.tags||[]).join(' | '),p.obs].map(q).join(';'); });
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+head.map(q).join(';')+'\n'+lin.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='infratores-'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ---------- ficha (cadastro/edicao de um individuo) ----------
+let INF_FICHA = {id:null, aba:'dados', sel:{crimes:[]}};
+function infFicha(id, aba){
+  INF_FICHA.id=id; INF_FICHA.aba=aba||'dados';
+  let ov=document.getElementById('inf-ficha'); if(!ov){ ov=document.createElement('div'); ov.id='inf-ficha'; ov.className='if-ov'; document.body.appendChild(ov); }
+  const p = id ? INF.cache.byId.get(id) : null;
+  if(id && !p){ ov.remove(); return; }
+  INF_FICHA.sel.crimes = p ? (p.crimes||[]).slice() : [];
+  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','Vínculos'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')]];
+  ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+     <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
+     <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
+     <div class="if-tabs">${tabs.map(([k,l])=>`<span class="if-tab ${INF_FICHA.aba===k?'on':''}" data-ab="${k}" ${!p&&k!=='dados'?'style="opacity:.4;pointer-events:none"':''}>${l}</span>`).join('')}</div>
+     <div id="iff-corpo"></div></div>`;
+  ov.querySelectorAll('[data-ab]').forEach(e=>e.onclick=()=>{ INF_FICHA.aba=e.dataset.ab; infFicha(id,e.dataset.ab); });
+  document.getElementById('iff-x').onclick=infFecharFicha;
+  if(p){
+    document.getElementById('iff-teia').onclick=()=>{ infFecharFicha(); INF.F.foco=String(p.id); INF.sub='teia'; infRender(); };
+    document.getElementById('iff-mapa').onclick=()=>{ infFecharFicha(); INF.F.foco=String(p.id); INF.sub='mapa'; infRender(); };
+    document.getElementById('iff-print').onclick=()=>infImprimirFicha(p.id);
+    const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
+  }
+  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
+}
+function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); }
+async function infAposSalvar(id,aba){ await infCarregar(); infRender(); if(document.getElementById('inf-ficha')) infFicha(id,aba); }
+
+function infDl(id,ops){ return `<datalist id="${id}">${ops.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`; }
+function infFichaDados(c,p){
+  p=p||{}; const ed=INF.podeEditar; const dis=ed?'':'disabled';
+  const f=(k,l,extra='',cls='')=>`<div class="${cls}"><label>${l}</label><input id="iff-${k}" value="${esc(p[k]??'')}" ${extra} ${dis}></div>`;
+  c.innerHTML=`<div class="if-grid">
+    ${f('nome','Nome completo *','','if-g2')}${f('alcunha','Alcunha / vulgo')}
+    <div><label>Nascimento ${p.nascimento?`<span style="font-weight:400">(${infIdade(p.nascimento)} anos)</span>`:''}</label><input type="date" id="iff-nascimento" value="${esc(p.nascimento||'')}" ${dis}></div>
+    ${f('documento','CPF / RG (opcional)')}${f('mae','Nome da mãe')}${f('telefone','Telefone')}
+    ${f('endereco','Endereço (rua, número)','','if-g2')}
+    <div><label>Bairro</label><input id="iff-bairro" list="iff-dl-b" value="${esc(p.bairro||'')}" ${dis}>${infDl('iff-dl-b',infBairros())}</div>
+    ${f('cidade','Cidade')}
+    <div><label>Área operacional</label><input id="iff-area" list="iff-dl-a" value="${esc(p.area||'')}" ${dis}>${infDl('iff-dl-a',infAreas())}</div>
+    <div class="if-g2"><label>Localização no mapa (lat, lng)</label><div style="display:flex;gap:6px"><input id="iff-lat" placeholder="lat" value="${esc(p.lat??'')}" ${dis}><input id="iff-lng" placeholder="lng" value="${esc(p.lng??'')}" ${dis}>
+      ${ed?'<button class="btn secundario if-sm" id="iff-geo" type="button" style="white-space:nowrap">📍 Localizar / marcar</button>':''}</div></div>
+    <div><label>Facção</label><input id="iff-faccao" list="iff-dl-f" value="${esc(p.faccao||'')}" placeholder="vazio = sem facção" ${dis}>${infDl('iff-dl-f',infFaccoes())}</div>
+    ${f('faccao_funcao','Função na facção (ex.: gerente geral, fogueteiro)')}
+    <div><label>Nível hierárquico</label><select id="iff-nivel" ${dis}><option value="">—</option>${INF.cat.niveis.map(n=>`<option value="${n[0]}" ${p.nivel===n[0]?'selected':''}>${n[0]} – ${esc(n[1])}</option>`).join('')}</select></div>
+    ${f('cargo','Cargo / papel específico')}
+    <div><label>Situação</label><select id="iff-status" ${dis}>${Object.entries(INF_STATUS).map(([k,v])=>`<option value="${k}" ${(p.status||'solto')===k?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div><label>Risco (1 a 5)</label><select id="iff-risco" ${dis}>${[1,2,3,4,5].map(n=>`<option ${(p.risco||1)===n?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div class="if-g2" style="grid-column:1/-1"><label>Perfil criminal (marque os crimes; detalhe cada ocorrência na aba “Registros”)</label>
+      <div id="iff-crimes">${INF.cat.crimes.map(cr=>`<span class="if-chip btn2 ${(INF_FICHA.sel.crimes.includes(cr[0]))?'on':''}" data-cr="${esc(cr[0])}">${esc(cr[0])}</span>`).join('')}</div></div>
+    <div class="if-g2" style="grid-column:1/-1"><label>Etiquetas (separe por vírgula: ex. armado, motocicleta, líder de ponto)</label><input id="iff-tags" value="${esc((p.tags||[]).join(', '))}" ${dis}></div>
+    <div style="grid-column:1/-1"><label>Observações</label><textarea id="iff-obs" rows="4" ${dis}>${esc(p.obs||'')}</textarea></div></div>
+    ${p.id?`<div style="font-size:11px;color:#888;margin-top:6px">Cadastrado por ${esc(p.criado_por||'?')} em ${esc(fmtData(p.criado_em))} · última alteração por ${esc(p.atualizado_por||'?')} em ${esc(fmtData(p.atualizado_em))}</div>`:''}
+    ${ed?`<div style="margin-top:10px;display:flex;gap:8px"><button class="btn" id="iff-salvar">💾 Salvar</button><span id="iff-msg" style="font-size:12px;align-self:center"></span></div>`:'<p style="font-size:12px;color:#888">Somente leitura.</p>'}`;
+  if(!ed) return;
+  c.querySelectorAll('[data-cr]').forEach(e=>e.onclick=()=>{ const n=e.dataset.cr, a=INF_FICHA.sel.crimes, i=a.indexOf(n); if(i>=0) a.splice(i,1); else a.push(n); e.classList.toggle('on'); });
+  document.getElementById('iff-geo').onclick=()=>{
+    const q=[document.getElementById('iff-endereco').value, document.getElementById('iff-bairro').value, document.getElementById('iff-cidade').value||'Juiz de Fora', 'MG'].filter(Boolean).join(', ');
+    const la=parseFloat(document.getElementById('iff-lat').value), ln=parseFloat(document.getElementById('iff-lng').value);
+    infEscolherPonto({titulo:'Localizar a residência no mapa', query:q, lat:isNaN(la)?null:la, lng:isNaN(ln)?null:ln}, r=>{ document.getElementById('iff-lat').value=r.lat; document.getElementById('iff-lng').value=r.lng; const b=document.getElementById('iff-bairro'); if(!b.value && r.bairro) b.value=r.bairro; }); };
+  document.getElementById('iff-salvar').onclick=async()=>{
+    const g=k=>document.getElementById('iff-'+k).value;
+    const d={id:p.id||undefined,nome:g('nome'),alcunha:g('alcunha'),nascimento:g('nascimento'),documento:g('documento'),mae:g('mae'),telefone:g('telefone'),endereco:g('endereco'),bairro:g('bairro'),cidade:g('cidade'),area:g('area'),lat:g('lat'),lng:g('lng'),
+      faccao:g('faccao'),faccao_funcao:g('faccao_funcao'),nivel:g('nivel'),cargo:g('cargo'),status:g('status'),risco:g('risco'),crimes:INF_FICHA.sel.crimes,tags:g('tags').split(',').map(x=>x.trim()).filter(Boolean),obs:g('obs')};
+    const m=document.getElementById('iff-msg'); m.textContent='Salvando…';
+    try{ const r=await apiInf('infSalvar',{entidade:'pessoa',dados:d}); await infAposSalvar(r.registro.id,'dados'); infToast('Salvo.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; }
+  };
+}
+// -- vinculos
+function infOpcaoPessoa(p){ return `${p.nome}${p.alcunha?' “'+p.alcunha+'”':''} #${p.id}`; }
+function infFichaVinc(c,p){
+  const ed=INF.podeEditar; const L=INF.cache.adj.get(p.id)||[];
+  const linha=v=>{ const outro=INF.cache.byId.get(v.a_id===p.id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&!!v.a_superior; let rel=v.tipo;
+    if(sub && v.a_superior){ const euSup=(v.a_id===p.id); rel=euSup?`Eu sou SUPERIOR de ${outro.nome}`:`Eu sou SUBORDINADO a ${outro.nome}`; }
+    return `<div class="if-ln"><span style="width:10px;height:10px;border-radius:50%;background:${infCorVinculo(v.tipo)};display:inline-block"></span><a href="#" data-p="${outro.id}"><b>${esc(infNomeExib(outro))}</b></a> ${outro.faccao?`<span class="if-b" style="background:${infCorFaccao(outro.faccao)}">${esc(outro.faccao)}</span>`:''}
+      <span>— ${esc(sub?v.tipo+': '+rel:v.tipo)}</span><span style="color:#888">força ${v.forca||2}/3</span>${v.obs?`<span style="color:#777">· ${esc(v.obs)}</span>`:''}${ed?`<button class="btn perigo if-sm" data-del="${v.id}" style="margin-left:auto">Remover</button>`:''}</div>`; };
+  c.innerHTML=`${L.map(linha).join('')||'<p style="color:#888;font-size:13px">Nenhum vínculo cadastrado.</p>'}
+   ${ed?`<div class="if-box" style="margin-top:10px;background:#fbfaf3"><h3>+ Novo vínculo</h3><div class="if-grid">
+     <div class="if-g2"><label>Pessoa (digite para buscar; se não existir, cadastre rapidamente)</label><input id="ifv-p" list="ifv-dl" placeholder="nome ou alcunha">${infDl('ifv-dl',INF.pessoas.filter(x=>x.id!==p.id).map(infOpcaoPessoa))}</div>
+     <div><label>Tipo de vínculo</label><select id="ifv-t">${INF.cat.vinculos.map(v=>`<option>${esc(v[0])}</option>`).join('')}</select></div>
+     <div id="ifv-dirw"><label>Hierarquia</label><select id="ifv-dir"><option value="eu">Eu sou SUPERIOR dessa pessoa</option><option value="ele">Eu sou SUBORDINADO a essa pessoa</option></select></div>
+     <div><label>Força do vínculo</label><select id="ifv-f"><option value="1">1 – fraco / eventual</option><option value="2" selected>2 – regular</option><option value="3">3 – forte / constante</option></select></div>
+     <div class="if-g2"><label>Observação</label><input id="ifv-o"></div></div>
+     <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn" id="ifv-ok">Adicionar vínculo</button><span id="ifv-m" style="font-size:12px"></span></div></div>`:''}`;
+  c.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{ e.preventDefault(); infFicha(+a.dataset.p); });
+  c.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este vínculo?')) return; try{ await apiInf('infExcluir',{entidade:'vinculo',id:+b.dataset.del}); await infAposSalvar(p.id,'vinc'); }catch(e){ infToast(e.message,true); } });
+  if(!ed) return;
+  const atualDir=()=>{ document.getElementById('ifv-dirw').style.display=infEhSub(document.getElementById('ifv-t').value)?'':'none'; }; document.getElementById('ifv-t').onchange=atualDir; atualDir();
+  document.getElementById('ifv-ok').onclick=async()=>{
+    const m=document.getElementById('ifv-m'); const txt=document.getElementById('ifv-p').value.trim(); if(!txt){ m.textContent='Informe a pessoa.'; return; }
+    try{
+      let outroId; const mt=txt.match(/#(\d+)$/); if(mt) outroId=+mt[1]; else { const ach=INF.pessoas.filter(x=>x.id!==p.id&&(infNorm(x.nome)===infNorm(txt)||infNorm(x.alcunha)===infNorm(txt))); if(ach.length===1) outroId=ach[0].id; }
+      if(!outroId){ if(!confirm(`“${txt}” não está cadastrado(a). Cadastrar agora só com o nome e vincular?`)) return; const r=await apiInf('infSalvar',{entidade:'pessoa',dados:{nome:txt,status:'solto',risco:1}}); outroId=r.registro.id; }
+      const tipo=document.getElementById('ifv-t').value; const sub=infEhSub(tipo); const eu=document.getElementById('ifv-dir').value==='eu';
+      const dados = sub && !eu ? {a_id:outroId,b_id:p.id,a_superior:true} : {a_id:p.id,b_id:outroId,a_superior:sub&&eu};
+      await apiInf('infSalvar',{entidade:'vinculo',dados:{...dados,tipo,forca:document.getElementById('ifv-f').value,obs:document.getElementById('ifv-o').value}});
+      await infAposSalvar(p.id,'vinc'); infToast('Vínculo adicionado.');
+    }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; }
+  };
+}
+// -- locais de atuacao
+function infFichaLoc(c,p){
+  const ed=INF.podeEditar; const L=INF.cache.locs.get(p.id)||[];
+  c.innerHTML=`${L.map(l=>`<div class="if-ln"><b>${esc(l.tipo||'Atuação')}</b> <span>${esc(l.descricao||'')}</span> <span style="color:#555">${esc(l.bairro||'')}</span> ${l.lat?`<span style="color:#33502f">📍 ${(+l.lat).toFixed(5)}, ${(+l.lng).toFixed(5)}</span>`:'<span style="color:#a4202a">sem coordenadas</span>'}${l.obs?`<span style="color:#777">· ${esc(l.obs)}</span>`:''}${ed?`<button class="btn perigo if-sm" data-del="${l.id}" style="margin-left:auto">Remover</button>`:''}</div>`).join('')||'<p style="color:#888;font-size:13px">Nenhum local de atuação cadastrado.</p>'}
+   ${ed?`<div class="if-box" style="margin-top:10px;background:#fbfaf3"><h3>+ Novo local de atuação</h3><div class="if-grid">
+    <div><label>Tipo</label><select id="ifl-t">${INF.cat.locais.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+    <div class="if-g2"><label>Descrição / endereço</label><input id="ifl-d" placeholder="ex.: Praça X, esquina da rua Y"></div>
+    <div><label>Bairro</label><input id="ifl-b" list="ifl-dl">${infDl('ifl-dl',infBairros())}</div>
+    <div class="if-g2"><label>Coordenadas</label><div style="display:flex;gap:6px"><input id="ifl-lat" placeholder="lat"><input id="ifl-lng" placeholder="lng"><button class="btn secundario if-sm" id="ifl-geo" type="button" style="white-space:nowrap">📍 Marcar no mapa</button></div></div>
+    <div class="if-g2"><label>Observação</label><input id="ifl-o"></div></div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn" id="ifl-ok">Adicionar local</button><span id="ifl-m" style="font-size:12px"></span></div></div>`:''}`;
+  c.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este local?')) return; try{ await apiInf('infExcluir',{entidade:'local',id:+b.dataset.del}); await infAposSalvar(p.id,'loc'); }catch(e){ infToast(e.message,true); } });
+  if(!ed) return;
+  document.getElementById('ifl-geo').onclick=()=>{ const la=parseFloat(document.getElementById('ifl-lat').value), ln=parseFloat(document.getElementById('ifl-lng').value);
+    infEscolherPonto({titulo:'Marcar o local de atuação', query:[document.getElementById('ifl-d').value,document.getElementById('ifl-b').value,'Juiz de Fora, MG'].filter(Boolean).join(', '), lat:isNaN(la)?(p.lat||null):la, lng:isNaN(ln)?(p.lng||null):ln},
+      r=>{ document.getElementById('ifl-lat').value=r.lat; document.getElementById('ifl-lng').value=r.lng; const b=document.getElementById('ifl-b'); if(!b.value&&r.bairro) b.value=r.bairro; }); };
+  document.getElementById('ifl-ok').onclick=async()=>{ const g=k=>document.getElementById('ifl-'+k).value; const m=document.getElementById('ifl-m');
+    if(!g('d')&&!g('b')&&!g('lat')){ m.textContent='Informe descrição, bairro ou coordenadas.'; return; }
+    try{ await apiInf('infSalvar',{entidade:'local',dados:{pessoa_id:p.id,tipo:g('t'),descricao:g('d'),bairro:g('b'),lat:g('lat'),lng:g('lng'),obs:g('o')}}); await infAposSalvar(p.id,'loc'); infToast('Local adicionado.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+}
+// -- registros de crimes
+function infFichaReg(c,p){
+  const ed=INF.podeEditar; const L=(INF.cache.regs.get(p.id)||[]).slice();
+  c.innerHTML=`${L.map(r=>`<div class="if-ln"><span style="color:#777;white-space:nowrap">${esc(infDataBR(r.data)||'s/ data')}</span><b>${esc(r.crime)}</b>${r.referencia?`<span class="if-chip">REDS/Ref ${esc(r.referencia)}</span>`:''}<span>${esc(r.bairro||'')}</span>${r.lat?'<span>📍</span>':''}<span style="color:#666">${esc(r.descricao||'')}</span>${ed?`<button class="btn perigo if-sm" data-del="${r.id}" style="margin-left:auto">Remover</button>`:''}</div>`).join('')||'<p style="color:#888;font-size:13px">Nenhum registro. As etiquetas do perfil criminal contam 1 ocorrência cada nas estatísticas.</p>'}
+   ${ed?`<div class="if-box" style="margin-top:10px;background:#fbfaf3"><h3>+ Novo registro de crime</h3><div class="if-grid">
+    <div><label>Data do fato</label><input type="date" id="ifr-d"></div>
+    <div><label>Tipo de crime</label><input id="ifr-c" list="ifr-dl">${infDl('ifr-dl',INF.cat.crimes.map(x=>x[0]))}</div>
+    <div><label>Nº REDS / referência</label><input id="ifr-r"></div>
+    <div><label>Bairro do fato</label><input id="ifr-b" list="ifr-dlb">${infDl('ifr-dlb',infBairros())}</div>
+    <div class="if-g2"><label>Coordenadas do fato (opcional)</label><div style="display:flex;gap:6px"><input id="ifr-lat" placeholder="lat"><input id="ifr-lng" placeholder="lng"><button class="btn secundario if-sm" id="ifr-geo" type="button" style="white-space:nowrap">📍 Marcar</button></div></div>
+    <div style="grid-column:1/-1"><label>Descrição resumida</label><input id="ifr-o"></div></div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn" id="ifr-ok">Adicionar registro</button><span id="ifr-m" style="font-size:12px"></span></div></div>`:''}`;
+  c.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este registro?')) return; try{ await apiInf('infExcluir',{entidade:'registro',id:+b.dataset.del}); await infAposSalvar(p.id,'reg'); }catch(e){ infToast(e.message,true); } });
+  if(!ed) return;
+  document.getElementById('ifr-geo').onclick=()=>{ infEscolherPonto({titulo:'Marcar o local do fato', query:[document.getElementById('ifr-b').value,'Juiz de Fora, MG'].filter(Boolean).join(', ')}, r=>{ document.getElementById('ifr-lat').value=r.lat; document.getElementById('ifr-lng').value=r.lng; const b=document.getElementById('ifr-b'); if(!b.value&&r.bairro) b.value=r.bairro; }); };
+  document.getElementById('ifr-ok').onclick=async()=>{ const g=k=>document.getElementById('ifr-'+k).value; const m=document.getElementById('ifr-m');
+    if(!g('c')){ m.textContent='Informe o tipo de crime.'; return; }
+    try{ await apiInf('infSalvar',{entidade:'registro',dados:{pessoa_id:p.id,data:g('d'),crime:g('c'),referencia:g('r'),bairro:g('b'),lat:g('lat'),lng:g('lng'),descricao:g('o')}}); await infAposSalvar(p.id,'reg'); infToast('Registro adicionado.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+}
+
+// ---------- mapa ----------
+async function infMapa(c){
+  const M=INF.M; const {lista,ids,vis:visSet}=infConjunto();
+  const corPor=p=> M.cor==='status'?(INF_STCOR[p.status]||'#888') : M.cor==='risco'?['#9a9a9a','#c7b24a','#e0a02a','#d9622b','#a4202a','#a4202a'][p.risco||1] : M.cor==='nivel'?(p.nivel?INF_PAL[(p.nivel-1)%INF_PAL.length]:'#9a9a9a') : infCorFaccao(p.faccao);
+  const pessoas=INF.pessoas.filter(p=>visSet.has(p.id));
+  c.innerHTML=`<div class="if-mapwrap"><div class="if-box" style="margin:0"><h3>Camadas</h3>
+    ${[['res','Residências'],['loc','Locais de atuação'],['reg','Local dos crimes (registros)'],['vin','Vínculos entre pessoas (rede)'],['lig','Ligar residência → locais de atuação']].map(([k,l])=>`<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:4px 0;cursor:pointer"><input type="checkbox" data-m="${k}" style="width:auto" ${M[k]?'checked':''}> ${l}</label>`).join('')}
+    <label style="font-size:11px;color:#666;font-weight:600;margin-top:8px;display:block">Colorir por</label><select id="ifm-cor">${[['faccao','Facção'],['status','Situação'],['risco','Risco'],['nivel','Nível hierárquico']].map(([k,l])=>`<option value="${k}" ${M.cor===k?'selected':''}>${l}</option>`).join('')}</select>
+    <div class="if-leg" id="ifm-leg" style="flex-direction:column"></div><div id="ifm-info" style="font-size:12px;color:#666;margin-top:8px"></div>
+    <button class="btn secundario if-sm" id="ifm-fit" style="margin-top:8px">⤢ Ajustar ao conjunto</button></div>
+    <div id="if-mapa"></div></div>`;
+  if(!(await infLib('leaflet'))){ document.getElementById('if-mapa').outerHTML=INF_AVISO_LIB('mapa'); return; }
+  c.querySelectorAll('[data-m]').forEach(e=>e.onchange=()=>{ M[e.dataset.m]=e.checked; infCorpo(); }); document.getElementById('ifm-cor').onchange=e=>{ M.cor=e.target.value; infCorpo(); };
+  const map=L.map('if-mapa',{preferCanvas:true,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}).setView([-21.7642,-43.3503],12,{animate:false}); INF.mapa=map;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  const pts=[]; let semCoord=0, vinSem=0; const abrir=id=>`<a href="#" onclick="infFicha(${id});return false">Abrir ficha</a>`;
+  const pop=p=>`<b>${esc(infNomeExib(p))}</b><br>${esc(p.faccao||'sem facção')}${p.nivel?' · nível '+p.nivel:''} · ${esc(INF_STATUS[p.status]||'')}<br>${esc(p.endereco||'')} ${esc(p.bairro||'')}<br>${abrir(p.id)}`;
+  pessoas.forEach(p=>{
+    const cor=corPor(p); const filtrado=!INF.F.vizinhos || ids.has(p.id);
+    if(p.lat&&p.lng){ pts.push([p.lat,p.lng]);
+      if(M.res) L.circleMarker([p.lat,p.lng],{radius:5+(p.risco||1)*1.4,color:'#fff',weight:1.5,fillColor:cor,fillOpacity:filtrado?.95:.45}).bindPopup(pop(p)).bindTooltip(infCurto(p)).addTo(map); }
+    else if(M.res) semCoord++;
+    (INF.cache.locs.get(p.id)||[]).forEach(l=>{ if(!(l.lat&&l.lng)) return; pts.push([l.lat,l.lng]);
+      if(M.loc) L.marker([l.lat,l.lng],{icon:L.divIcon({className:'',html:`<div style="width:13px;height:13px;background:${cor};border:2px solid #fff;transform:rotate(45deg);box-shadow:0 0 3px #0008"></div>`,iconSize:[13,13],iconAnchor:[6,6]})}).bindPopup(`<b>${esc(l.tipo||'Atuação')}</b> – ${esc(infNomeExib(p))}<br>${esc(l.descricao||'')} ${esc(l.bairro||'')}<br>${abrir(p.id)}`).addTo(map);
+      if(M.lig && p.lat&&p.lng) L.polyline([[p.lat,p.lng],[l.lat,l.lng]],{color:cor,weight:1.5,opacity:.6,dashArray:'3 5'}).addTo(map); });
+    if(M.reg) (INF.cache.regs.get(p.id)||[]).forEach(r=>{ if(!(r.lat&&r.lng)) return; pts.push([r.lat,r.lng]); L.circleMarker([r.lat,r.lng],{radius:4,color:'#222',weight:1,fillColor:'#ffd24a',fillOpacity:.9}).bindPopup(`<b>${esc(r.crime)}</b> ${esc(infDataBR(r.data))}<br>${esc(infNomeExib(p))}<br>${esc(r.descricao||'')}<br>${abrir(p.id)}`).addTo(map); });
+  });
+  if(M.vin) INF.vinculos.forEach(v=>{ if(!visSet.has(v.a_id)||!visSet.has(v.b_id)) return; const a=INF.cache.byId.get(v.a_id), b=INF.cache.byId.get(v.b_id); if(!a||!b) return;
+    const pa=a.lat&&a.lng?[a.lat,a.lng]:null, pb=b.lat&&b.lng?[b.lat,b.lng]:null; if(!pa||!pb){ vinSem++; return; }
+    const sub=infEhSub(v.tipo); const sup=v.a_superior?a:b, inf=v.a_superior?b:a;
+    L.polyline([pa,pb],{color:infCorVinculo(v.tipo),weight:1+(v.forca||2),opacity:.75,dashArray:sub?null:'6 4'}).bindTooltip(sub?`${esc(sup.nome)} → ${esc(inf.nome)} (${esc(v.tipo)})`:`${esc(a.nome)} ↔ ${esc(b.nome)} (${esc(v.tipo)})`).addTo(map); });
+  if(pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:15,animate:false});
+  document.getElementById('ifm-fit').onclick=()=>{ if(pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:15,animate:false}); };
+  const chaves = M.cor==='faccao' ? [...new Set(pessoas.map(p=>p.faccao||''))].map(f=>[f||'Sem facção',infCorFaccao(f)]) : M.cor==='status' ? Object.entries(INF_STATUS).map(([k,v])=>[v,INF_STCOR[k]]) : M.cor==='risco' ? [['1','#9a9a9a'],['2','#c7b24a'],['3','#e0a02a'],['4','#d9622b'],['5','#a4202a']] : INF.cat.niveis.map(n=>['Nível '+n[0],INF_PAL[(n[0]-1)%INF_PAL.length]]);
+  document.getElementById('ifm-leg').innerHTML=chaves.map(([l,cor])=>`<span><i style="background:${cor}"></i>${esc(l)}</span>`).join('')+'<span style="color:#666;margin-top:4px">● residência · ◆ local de atuação · ● amarelo = crime · linha cheia = subordinação · tracejada = outros vínculos</span>';
+  document.getElementById('ifm-info').innerHTML=`${pessoas.length} pessoas no conjunto${INF.F.vizinhos?' (com conexões)':''}.${semCoord?`<br><span style="color:#a4202a">${semCoord} sem coordenadas (não aparecem).</span>`:''}${vinSem?`<br><span style="color:#a4202a">${vinSem} vínculos sem ponto em uma das pontas.</span>`:''}`;
+  setTimeout(()=>{ if(INF.mapa===map) map.invalidateSize({animate:false}); },100);
+}
+
+// ---------- teia (rede) ----------
+async function infTeia(c){
+  const T=INF.T; const {lista,ids,vis:visSet}=infConjunto();
+  let edges=INF.vinculos.filter(v=>visSet.has(v.a_id)&&visSet.has(v.b_id)&&INF.cache.byId.has(v.a_id)&&INF.cache.byId.has(v.b_id));
+  const comArestas=new Set(); edges.forEach(v=>{ comArestas.add(v.a_id); comArestas.add(v.b_id); });
+  let pessoas=INF.pessoas.filter(p=>visSet.has(p.id)); if(!T.isolados) pessoas=pessoas.filter(p=>comArestas.has(p.id));
+  const noIds=new Set(pessoas.map(p=>p.id)); edges=edges.filter(v=>noIds.has(v.a_id)&&noIds.has(v.b_id));
+  c.innerHTML=`<div class="if-box"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px">
+    <b>${pessoas.length} pessoas · ${edges.length} vínculos</b>
+    <label>Layout <select id="ift-lay" style="width:auto"><option value="fisica" ${T.layout==='fisica'?'selected':''}>Teia (livre)</option><option value="hier" ${T.layout==='hier'?'selected':''}>Hierarquia (por nível)</option></select></label>
+    <label>Tamanho <select id="ift-tam" style="width:auto"><option value="score" ${T.tam==='score'?'selected':''}>Prioridade</option><option value="grau" ${T.tam==='grau'?'selected':''}>Nº de vínculos</option><option value="risco" ${T.tam==='risco'?'selected':''}>Risco</option></select></label>
+    <label style="display:flex;gap:4px;align-items:center;cursor:pointer"><input type="checkbox" id="ift-iso" style="width:auto" ${T.isolados?'checked':''}> mostrar sem vínculos</label>
+    <button class="btn secundario if-sm" id="ift-fit">⤢ Ajustar</button><button class="btn secundario if-sm" id="ift-png">🖼️ PNG</button></div>
+    <div style="display:grid;grid-template-columns:1fr 250px;gap:10px"><div id="if-teia"></div><div id="ift-side" style="font-size:12.5px"><div style="color:#888">Clique em uma pessoa para ver o resumo. Duplo clique abre a ficha.</div></div></div>
+    <div class="if-leg" id="ift-leg"></div></div>`;
+  if(!pessoas.length){ document.getElementById('if-teia').innerHTML='<p style="padding:20px;color:#888">Nenhum vínculo para o conjunto filtrado. Cadastre vínculos na ficha dos infratores (aba “Vínculos”).</p>'; return; }
+  if(!(await infLib('vis'))){ document.getElementById('if-teia').outerHTML=INF_AVISO_LIB('rede'); return; }
+  document.getElementById('ift-lay').onchange=e=>{ T.layout=e.target.value; infCorpo(); }; document.getElementById('ift-tam').onchange=e=>{ T.tam=e.target.value; infCorpo(); }; document.getElementById('ift-iso').onchange=e=>{ T.isolados=e.target.checked; infCorpo(); };
+  const tam=p=>{ const s=infScore(p); const v = T.tam==='grau'?s.grau/6 : T.tam==='risco'?((p.risco||1)/5) : s.total/100; return 12+Math.min(1,v)*26; };
+  const nodes=pessoas.map(p=>{ const cor=infCorFaccao(p.faccao); const st=p.status; return {id:p.id,label:infCurto(p),title:`${infNomeExib(p)}\n${p.faccao||'sem facção'}${p.nivel?' · nível '+p.nivel:''}\n${INF_STATUS[st]||''}`,
+    shape:(p.nivel&&p.nivel<=2)?'diamond':(p.status==='preso'?'square':'dot'),size:tam(p),level:p.nivel||6,
+    color:{background:cor,border:st==='foragido'?'#a4202a':st==='preso'?'#555':st==='morto'?'#000':'#fff',highlight:{background:cor,border:'#000'}},borderWidth:st==='solto'||st==='monitorado'?2:4,borderWidthSelected:5,
+    shapeProperties:{borderDashes:st==='preso'?[4,3]:false},font:{size:12,color:'#222',strokeWidth:3,strokeColor:'#fff'},opacity:ids.has(p.id)?1:.5}; });
+  const ed=edges.map(v=>{ const sub=infEhSub(v.tipo); const a=v.a_superior; return {id:v.id,from:v.a_id,to:v.b_id,arrows:sub?'to':'',color:{color:infCorVinculo(v.tipo),opacity:.85},width:1+(v.forca||2),dashes:!sub,title:sub?`Subordinação: ${INF.cache.byId.get(v.a_id).nome} → ${INF.cache.byId.get(v.b_id).nome}`:`${v.tipo}`,smooth:{type:'continuous'}}; });
+  // para subordinacao, a seta vai do superior (a) para o subordinado (b): ja garantido por a_superior=true; se a_superior=false o tipo de subordinacao nao tem direcao
+  ed.forEach((e,i)=>{ const v=edges[i]; if(infEhSub(v.tipo) && !v.a_superior) e.arrows=''; });
+  const hier=T.layout==='hier';
+  const net=new vis.Network(document.getElementById('if-teia'),{nodes:nodes,edges:ed},{
+    layout: hier?{hierarchical:{enabled:true,direction:'UD',sortMethod:'directed',levelSeparation:120,nodeSpacing:110}}:{improvedLayout:pessoas.length<300},
+    physics: hier?false:{solver:'barnesHut',barnesHut:{gravitationalConstant:-5000,springLength:110,springConstant:.04},stabilization:{iterations:180}},
+    interaction:{hover:true,tooltipDelay:150,navigationButtons:false,keyboard:false},edges:{smooth:{type:'continuous'}}});
+  INF.net=net;
+  // em modo hierarquico o nivel vem do cadastro; sem nivel fica na base
+  const side=document.getElementById('ift-side');
+  net.on('click',ev=>{ if(!ev.nodes.length){ return; } const p=INF.cache.byId.get(ev.nodes[0]); const s=infScore(p); const L=INF.cache.adj.get(p.id)||[];
+    side.innerHTML=`<b style="font-size:14px">${esc(infNomeExib(p))}</b><br>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span> `:''}${infBadge(p.status)} ${infRiscoHtml(p.risco)}
+      <div style="margin:6px 0">${esc(p.cargo||'')}${p.nivel?` · nível ${p.nivel}`:''}<br>${esc(p.bairro||'')}</div>
+      <div>Prioridade: <b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b> · ${s.grau} vínculos · ${s.n} crimes</div>
+      <div style="margin:6px 0">${Object.keys(infCrimesDe(p)).slice(0,6).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}</div>
+      <div style="max-height:150px;overflow:auto">${L.map(v=>{ const o=INF.cache.byId.get(v.a_id===p.id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; const rel=sub?((v.a_id===p.id)?'superior de':'subordinado a'):v.tipo; return `<div style="font-size:11.5px">• ${esc(rel)} <a href="#" data-p="${o.id}">${esc(infCurto(o))}</a></div>`; }).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn if-sm" onclick="infFicha(${p.id})">Abrir ficha</button><button class="btn secundario if-sm" onclick="INF.F.foco='${p.id}';infRender()">🎯 Focar rede</button></div>`;
+    side.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{ e.preventDefault(); net.selectNodes([+a.dataset.p]); net.focus(+a.dataset.p,{scale:1.1,animation:true}); }); });
+  net.on('doubleClick',ev=>{ if(ev.nodes.length) infFicha(ev.nodes[0]); });
+  document.getElementById('ift-fit').onclick=()=>net.fit({animation:true});
+  document.getElementById('ift-png').onclick=()=>{ const cv=document.querySelector('#if-teia canvas'); if(!cv) return; const a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='teia-infratores.png'; a.click(); };
+  const fac=[...new Set(pessoas.map(p=>p.faccao||''))].map(f=>`<span><i style="background:${infCorFaccao(f)}"></i>${esc(f||'Sem facção')}</span>`).join('');
+  const tipos=[...new Set(edges.map(v=>v.tipo))].map(t=>`<span><i style="background:${infCorVinculo(t)};border-radius:2px;height:4px;vertical-align:2px"></i>${esc(t)}${infEhSub(t)?' (→ do superior ao subordinado)':''}</span>`).join('');
+  document.getElementById('ift-leg').innerHTML=fac+'<span style="width:100%"></span>'+tipos+'<span style="width:100%"></span><span style="color:#666">◆ nível 1–2 · ■ preso · borda vermelha = foragido · tamanho = '+({score:'prioridade',grau:'nº de vínculos',risco:'risco'}[T.tam])+(INF.F.vizinhos?' · esmaecidos = conexões fora do filtro':'')+'</span>';
+}
+
+// ---------- Pareto ----------
+function infParetoDados(){
+  const P=INF.P; const {lista}=infConjunto(); const F=INF.F; const m=new Map(); const add=(k,l,v,id)=>{ if(!v) return; const o=m.get(k)||{k,label:l,v:0,id}; o.v+=v; m.set(k,o); };
+  lista.forEach(p=>{ const s=infScore(p); const cr=infCrimesDe(p,F.de,F.ate);
+    if(P.dim==='pessoa'){ add('p'+p.id, infNomeExib(p), P.modo==='qual'?s.total : P.med==='conex'?s.grau : Object.values(cr).reduce((a,b)=>a+b,0), p.id); }
+    else if(P.dim==='crime'){ Object.keys(cr).forEach(c=>add(c,c,P.modo==='qual'?infPesoCrime(c)*cr[c]:cr[c])); }
+    else if(P.dim==='bairro_res'){ const b=p.bairro||'(sem bairro)'; add(b,b,P.modo==='qual'?s.total:1); }
+    else if(P.dim==='bairro_atu'){ const bs=new Set(); (INF.cache.locs.get(p.id)||[]).forEach(l=>{ if(l.bairro) bs.add(l.bairro); }); (INF.cache.regs.get(p.id)||[]).forEach(r=>{ if(r.bairro) bs.add(r.bairro); }); if(!bs.size) bs.add('(sem local informado)'); bs.forEach(b=>add(b,b,P.modo==='qual'?s.total:1)); }
+    else if(P.dim==='faccao'){ const f=p.faccao||'(sem facção)'; add(f,f,P.modo==='qual'?s.total:1); }
+    else if(P.dim==='area'){ const a=p.area||'(sem área)'; add(a,a,P.modo==='qual'?s.total:1); }
+    else if(P.dim==='nivel'){ const n=p.nivel?('Nível '+p.nivel):'(sem nível)'; add(n,n,P.modo==='qual'?s.total:1); } });
+  const arr=[...m.values()].sort((a,b)=>b.v-a.v); const tot=arr.reduce((a,b)=>a+b.v,0)||1; let ac=0; arr.forEach(o=>{ ac+=o.v; o.pct=o.v/tot*100; o.ac=ac/tot*100; }); return {arr,tot,lista};
+}
+async function infPareto(c){
+  const P=INF.P; const d=infParetoDados(); const W=INF.pesos;
+  const dims=[['pessoa','Pessoas (alvos)'],['crime','Tipos de crime'],['bairro_res','Bairro de residência'],['bairro_atu','Bairro de atuação'],['faccao','Facções'],['area','Áreas'],['nivel','Nível hierárquico']];
+  const unid = P.modo==='qual' ? (P.dim==='crime'?'gravidade (peso × ocorrências)':'índice de prioridade (0–100, somado)') : (P.dim==='pessoa'?(P.med==='conex'?'vínculos (grau)':'ocorrências de crime'):P.dim==='crime'?'ocorrências':'pessoas');
+  c.innerHTML=`<div class="if-box"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+    <div><label style="font-size:11px;font-weight:600;color:#666">Análise</label><div class="if-tabs" style="margin:0"><span class="if-tab ${P.modo==='quant'?'on':''}" data-md="quant">Quantitativa</span><span class="if-tab ${P.modo==='qual'?'on':''}" data-md="qual">Qualitativa (prioridade)</span></div></div>
+    <div><label style="font-size:11px;font-weight:600;color:#666">Agrupar por</label><select id="ifp-dim" style="width:auto">${dims.map(([k,l])=>`<option value="${k}" ${P.dim===k?'selected':''}>${l}</option>`).join('')}</select></div>
+    ${P.dim==='pessoa'&&P.modo==='quant'?`<div><label style="font-size:11px;font-weight:600;color:#666">Medir</label><select id="ifp-med" style="width:auto"><option value="ocorr" ${P.med==='ocorr'?'selected':''}>Ocorrências de crime</option><option value="conex" ${P.med==='conex'?'selected':''}>Conexões (vínculos)</option></select></div>`:''}
+    <button class="btn secundario if-sm" id="ifp-print">🖨️ Imprimir / PDF</button></div>
+    ${P.modo==='qual'?`<details style="margin-bottom:10px;font-size:12px"><summary style="cursor:pointer;font-weight:600">⚖️ Pesos do índice de prioridade (gravidade dos crimes, reincidência, posição hierárquica, centralidade na rede, risco, situação)</summary>
+      <div class="if-grid" style="margin-top:8px">${[['gravidade','Gravidade dos crimes'],['reincidencia','Reincidência'],['hierarquia','Hierarquia na facção'],['rede','Centralidade na rede'],['risco','Risco (avaliação)'],['situacao','Situação (solto/foragido pesa mais)']].map(([k,l])=>`<div><label>${l}: <b id="ifw-v-${k}">${W[k]}</b></label><input type="range" min="0" max="50" value="${W[k]}" data-w="${k}" style="padding:0"></div>`).join('')}</div>
+      ${INF.podeEditar?'<button class="btn secundario if-sm" id="ifw-save" style="margin-top:6px">💾 Salvar pesos para todos</button>':''} <button class="btn secundario if-sm" id="ifw-reset" style="margin-top:6px">Restaurar padrão</button>
+      <p style="color:#666;margin:6px 0 0">O peso dos crimes individuais (ex.: homicídio 10, furto 3) fica em ⚙️ Configurações. O índice é uma ferramenta de apoio à priorização — não substitui a análise do P2.</p></details>`:''}
+    ${d.arr.length?`<canvas id="ifp-ch" style="max-height:360px"></canvas>
+    <p style="font-size:12px;color:#555;margin:6px 0 0">Total: <b>${d.tot.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b> ${esc(unid)} em ${d.arr.length} itens. <b>${d.arr.filter((o,i)=>i===0||d.arr[i-1].ac<80).length}</b> itens (zona A) concentram ~80% — são os principais alvos de atuação.</p>`:'<p style="color:#888">Sem dados para os filtros escolhidos. Cadastre infratores, crimes e vínculos para alimentar o Pareto.</p>'}</div>
+   ${d.arr.length?`<div class="if-box"><h3>Tabela de Pareto</h3><div class="if-tb"><table><thead><tr><th>#</th><th>Item</th><th style="text-align:right">${esc(unid)}</th><th style="text-align:right">%</th><th style="text-align:right">% acum.</th><th>Zona</th></tr></thead><tbody>
+    ${d.arr.map((o,i)=>{ const A=i===0||d.arr[i-1].ac<80; return `<tr class="${o.id?'cl':''}" ${o.id?`data-id="${o.id}"`:''}><td>${i+1}</td><td>${esc(o.label)}</td><td style="text-align:right">${o.v.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td style="text-align:right">${o.pct.toFixed(1).replace('.',',')}%</td><td style="text-align:right">${o.ac.toFixed(1).replace('.',',')}%</td><td>${A?'<span class="if-b" style="background:#a4202a">A – prioritário</span>':(o.ac<95?'<span class="if-b" style="background:#c77d2b">B</span>':'<span class="if-b" style="background:#888">C</span>')}</td></tr>`; }).join('')}</tbody></table></div></div>`:''}
+   ${P.modo==='qual'&&P.dim==='pessoa'&&d.arr.length?`<div class="if-box"><h3>Por que esses alvos? (composição do índice – 15 primeiros)</h3><canvas id="ifp-comp" style="max-height:420px"></canvas></div>`:''}`;
+  c.querySelectorAll('[data-md]').forEach(e=>e.onclick=()=>{ P.modo=e.dataset.md; infCorpo(); });
+  document.getElementById('ifp-dim').onchange=e=>{ P.dim=e.target.value; infCorpo(); }; const me=document.getElementById('ifp-med'); if(me) me.onchange=e=>{ P.med=e.target.value; infCorpo(); };
+  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=()=>infFicha(+t.dataset.id));
+  document.getElementById('ifp-print').onclick=()=>infImprimirPareto(d,unid);
+  c.querySelectorAll('[data-w]').forEach(r=>r.addEventListener('input',()=>{ W[r.dataset.w]=+r.value; document.getElementById('ifw-v-'+r.dataset.w).textContent=r.value; clearTimeout(INF._tw); INF._tw=setTimeout(()=>{ infRecalc(); infCorpo(); const dt=document.querySelector('#inf-corpo details'); if(dt) dt.open=true; },200); }));
+  const sv=document.getElementById('ifw-save'); if(sv) sv.onclick=async()=>{ try{ await apiInf('infConfigSalvar',{chave:'pesos',valor:INF.pesos}); infToast('Pesos salvos.'); }catch(e){ infToast(e.message,true); } };
+  document.getElementById('ifw-reset')&&(document.getElementById('ifw-reset').onclick=()=>{ INF.pesos=infMesclar(INF_DEF.pesos,null); infRecalc(); infCorpo(); });
+  if(!d.arr.length) return;
+  const top=d.arr.slice(0,25); const resto=d.arr.slice(25); const rot=top.map(o=>o.label.length>26?o.label.slice(0,25)+'…':o.label), vals=top.map(o=>Math.round(o.v*10)/10), ac=top.map(o=>Math.round(o.ac*10)/10);
+  if(resto.length){ rot.push('Outros ('+resto.length+')'); vals.push(Math.round(resto.reduce((a,b)=>a+b.v,0)*10)/10); ac.push(100); }
+  INF.charts.par=desenharGrafico('ifp-ch',{type:'bar',data:{labels:rot,datasets:[
+    {type:'bar',label:unid,data:vals,backgroundColor:top.map((o,i)=>(i===0||d.arr[i-1].ac<80)?'#a4202a':'#b8a76a').concat(resto.length?['#bbb']:[]),yAxisID:'y'},
+    {type:'line',label:'% acumulado',data:ac,borderColor:'#2c4870',backgroundColor:'#2c4870',yAxisID:'y1',tension:.15,pointRadius:3},
+    {type:'line',label:'80%',data:rot.map(()=>80),borderColor:'#888',borderDash:[6,5],pointRadius:0,yAxisID:'y1'}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true,title:{display:true,text:unid}},y1:{position:'right',min:0,max:100,grid:{drawOnChartArea:false},ticks:{callback:v=>v+'%'}}}}});
+  if(P.modo==='qual'&&P.dim==='pessoa'){ const t15=d.arr.slice(0,15).map(o=>INF.cache.byId.get(o.id)); const W2=INF.pesos, tw=Object.values(W2).reduce((a,b)=>a+(+b||0),0)||1;
+    const nomes={gravidade:'Gravidade',reincidencia:'Reincidência',hierarquia:'Hierarquia',rede:'Rede',risco:'Risco',situacao:'Situação'}; const cores=['#a4202a','#c77d2b','#6b4c9a','#2c4870','#8f7f45','#33502f'];
+    INF.charts.comp=desenharGrafico('ifp-comp',{type:'bar',data:{labels:t15.map(p=>infCurto(p)),datasets:Object.keys(nomes).map((k,i)=>({label:nomes[k],backgroundColor:cores[i],data:t15.map(p=>Math.round((+W2[k]||0)*(infScore(p).comp[k]||0)/tw*1000)/10)}))},options:{indexAxis:'y',plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true,title:{display:true,text:'pontos do índice'}},y:{stacked:true}}}}); }
+}
+function infImprimirPareto(d,unid){
+  let ov=document.getElementById('inf-overlay'); if(ov) ov.remove(); const P=INF.P;
+  const img=id=>{ const c=document.getElementById(id); try{ return c?`<img src="${c.toDataURL('image/png')}">`:''; }catch(e){ return ''; } };
+  ov=document.createElement('div'); ov.id='inf-overlay'; ov.className='ov-print';
+  ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="infFecharOverlay()">✖ Voltar</button></div>
+   <div class="if-folha"><h1>PARETO DE ALVOS – 4ª CIA PM IND GER</h1><div class="sg">DOCUMENTO SIGILOSO – USO RESTRITO</div>
+   <div style="text-align:center;font-size:9pt;margin-bottom:6pt">Análise ${P.modo==='qual'?'qualitativa (índice de prioridade)':'quantitativa'} por ${esc({pessoa:'pessoa',crime:'tipo de crime',bairro_res:'bairro de residência',bairro_atu:'bairro de atuação',faccao:'facção',area:'área',nivel:'nível hierárquico'}[P.dim])} · gerado em ${new Date().toLocaleString('pt-BR')}</div>
+   ${img('ifp-ch')}${P.modo==='qual'&&P.dim==='pessoa'?img('ifp-comp'):''}
+   <h2>Tabela</h2><table><thead><tr><th>#</th><th>Item</th><th>${esc(unid)}</th><th>%</th><th>% acum.</th><th>Zona</th></tr></thead><tbody>${d.arr.slice(0,60).map((o,i)=>`<tr><td>${i+1}</td><td>${esc(o.label)}</td><td>${o.v.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td>${o.pct.toFixed(1).replace('.',',')}%</td><td>${o.ac.toFixed(1).replace('.',',')}%</td><td>${(i===0||d.arr[i-1].ac<80)?'A':(o.ac<95?'B':'C')}</td></tr>`).join('')}</tbody></table></div>`;
+  document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
+}
+function infFecharOverlay(){ const o=document.getElementById('inf-overlay'); if(o) o.remove(); printPagina(null); }
+function infImprimirFicha(id){
+  const p=INF.cache.byId.get(id); if(!p) return; let ov=document.getElementById('inf-overlay'); if(ov) ov.remove(); const s=infScore(p);
+  const li=(a,b)=>b?`<tr><th style="width:30%">${a}</th><td>${esc(b)}</td></tr>`:'';
+  const V=(INF.cache.adj.get(id)||[]).map(v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; return `<tr><td>${esc(infNomeExib(o))}</td><td>${esc(o.faccao||'')}</td><td>${esc(sub?(v.a_id===id?'Superior de':'Subordinado a'):v.tipo)}</td></tr>`; }).join('');
+  ov=document.createElement('div'); ov.id='inf-overlay'; ov.className='ov-print';
+  ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="infFecharOverlay()">✖ Voltar</button></div>
+   <div class="if-folha"><h1>FICHA DE INFRATOR</h1><div class="sg">DOCUMENTO SIGILOSO – USO RESTRITO</div>
+   <table>${li('Nome',p.nome)}${li('Alcunha',p.alcunha)}${li('Nascimento',p.nascimento?infDataBR(p.nascimento)+' ('+infIdade(p.nascimento)+' anos)':'')}${li('Documento',p.documento)}${li('Mãe',p.mae)}${li('Telefone',p.telefone)}${li('Endereço',[p.endereco,p.bairro,p.cidade].filter(Boolean).join(' – '))}${li('Área',p.area)}${li('Facção',[p.faccao,p.faccao_funcao].filter(Boolean).join(' – '))}${li('Nível / cargo',[p.nivel,p.cargo].filter(Boolean).join(' – '))}${li('Situação',INF_STATUS[p.status])}${li('Risco',p.risco+'/5')}${li('Índice de prioridade',String(s.total).replace('.',','))}${li('Etiquetas',(p.tags||[]).join(', '))}${li('Observações',p.obs)}</table>
+   <h2>Vínculos</h2>${V?`<table><thead><tr><th>Pessoa</th><th>Facção</th><th>Relação</th></tr></thead><tbody>${V}</tbody></table>`:'<p>—</p>'}
+   <h2>Locais de atuação</h2>${(INF.cache.locs.get(id)||[]).map(l=>`<div>• ${esc(l.tipo||'')}: ${esc(l.descricao||'')} ${esc(l.bairro||'')}</div>`).join('')||'<p>—</p>'}
+   <h2>Registros de crimes</h2>${(INF.cache.regs.get(id)||[]).map(r=>`<div>• ${esc(infDataBR(r.data))} – ${esc(r.crime)} ${r.referencia?'(REDS '+esc(r.referencia)+')':''} ${esc(r.bairro||'')} ${esc(r.descricao||'')}</div>`).join('')||'<p>—</p>'}
+   <p style="font-size:8pt;margin-top:14pt">Gerado em ${new Date().toLocaleString('pt-BR')} por ${esc(ST.usuario.nome)}.</p></div>`;
+  document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
+}
+
+// ---------- configuracoes ----------
+async function infConfig(c){
+  const K=INF.cat, ed=INF.podeEditar; const ta=(id,l,v,h)=>`<div class="if-box"><h3>${l}</h3><textarea id="${id}" rows="${h||6}" ${ed?'':'disabled'}>${esc(v)}</textarea></div>`;
+  c.innerHTML=`<p style="font-size:12.5px;color:#555;margin-top:0">Listas usadas nos cadastros, filtros e no cálculo do Pareto. Uma linha por item.</p>
+   <div class="if-grid" style="align-items:start">
+   ${ta('ifc-crimes','Tipos de crime e gravidade (nome | peso 1–10)',K.crimes.map(c=>c[0]+' | '+c[1]).join('\n'),12)}
+   ${ta('ifc-fac','Facções',K.faccoes.join('\n'))}${ta('ifc-area','Áreas operacionais',K.areas.join('\n'))}
+   ${ta('ifc-niv','Níveis hierárquicos (número | nome) – 1 = topo',K.niveis.map(n=>n[0]+' | '+n[1]).join('\n'))}
+   ${ta('ifc-vin','Tipos de vínculo (nome | 1 = hierárquico/subordinação)',K.vinculos.map(v=>v[0]+' | '+v[1]).join('\n'))}
+   ${ta('ifc-loc','Tipos de local de atuação',K.locais.join('\n'))}
+   ${ta('ifc-bai','Bairros extras (além dos já usados e da lista da Carta de Situação)',(K.bairros||[]).join('\n'))}</div>
+   ${ed?'<button class="btn" id="ifc-ok">💾 Salvar configurações</button> <span id="ifc-m" style="font-size:12px"></span>':''}
+   ${isMaster()?'<hr><button class="btn secundario if-sm" id="ifc-log">📜 Ver registro de alterações (últimas 200)</button><div id="ifc-logbox"></div>':''}`;
+  const L=id=>document.getElementById(id).value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const ok=document.getElementById('ifc-ok'); if(ok) ok.onclick=async()=>{
+    const cat={ crimes:L('ifc-crimes').map(l=>{ const [n,p]=l.split('|').map(x=>x.trim()); return [n,Math.min(10,Math.max(1,parseInt(p)||5))]; }), faccoes:L('ifc-fac'), areas:L('ifc-area'),
+      niveis:L('ifc-niv').map(l=>{ const [n,t]=l.split('|').map(x=>x.trim()); return [parseInt(n)||1,t||'']; }), vinculos:L('ifc-vin').map(l=>{ const [n,s]=l.split('|').map(x=>x.trim()); return [n,s==='1'?1:0]; }), locais:L('ifc-loc'), bairros:L('ifc-bai') };
+    if(!cat.vinculos.length || !cat.crimes.length || !cat.niveis.length){ document.getElementById('ifc-m').textContent='Crimes, níveis e vínculos não podem ficar vazios.'; return; }
+    try{ await apiInf('infConfigSalvar',{chave:'catalogos',valor:cat}); INF.cat=infMesclar(INF_DEF.catalogos,cat); INF.config.catalogos=cat; infRecalc(); infToast('Configurações salvas.'); infRender(); }catch(e){ document.getElementById('ifc-m').innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+  const lg=document.getElementById('ifc-log'); if(lg) lg.onclick=async()=>{ try{ const r=await apiInf('infLog'); document.getElementById('ifc-logbox').innerHTML=`<div class="if-tb" style="max-height:300px"><table><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>O quê</th></tr></thead><tbody>${r.log.map(x=>`<tr><td>${esc(fmtData(x.quando))}</td><td>${esc(x.usuario)}</td><td>${esc(x.acao)}</td><td>${esc(x.entidade)} ${esc(x.resumo||'')}</td></tr>`).join('')}</tbody></table></div>`; }catch(e){ infToast(e.message,true); } };
+}
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
   const box = document.getElementById('area-corpo');
