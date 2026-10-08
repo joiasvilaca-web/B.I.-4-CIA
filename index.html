@@ -367,6 +367,7 @@ async function renderArea(areaId, opts={}){
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='escala'?'ativo':''}" data-tab="escala">📋 Escala</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='carta'?'ativo':''}" data-tab="carta">📄 Carta de Situação</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='os'?'ativo':''}" data-tab="os">📑 O.S.</div>` : ''}
+      ${areaId==='P3' ? `<div class="tab-area ${abaArea==='produtividade'?'ativo':''}" data-tab="produtividade">📈 Produtividade</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='aniversario'?'ativo':''}" data-tab="aniversario">🎂 Aniversários</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='edital'?'ativo':''}" data-tab="edital">📑 Edital</div>` : ''}
     </div>
@@ -379,6 +380,7 @@ async function renderArea(areaId, opts={}){
   if(abaArea==='escala' && areaId==='P3') return renderAreaEscala(areaId, acesso);
   if(abaArea==='carta' && areaId==='P3') return renderAreaCarta(areaId, acesso);
   if(abaArea==='os' && areaId==='P3') return renderAreaOS(areaId, acesso);
+  if(abaArea==='produtividade' && areaId==='P3') return renderAreaProdutividade(areaId, acesso);
   if(abaArea==='aniversario' && areaId==='P5') return renderAreaAniversario(areaId, acesso);
   if(abaArea==='edital' && areaId==='P5') return renderAreaEdital(areaId, acesso);
 
@@ -1346,7 +1348,7 @@ function ctInjetarCss(){
   .ct-doc .b{font-weight:bold}
   .ct-doc .alt1{height:19px}.ct-doc .alt2{height:30px}.ct-doc .alt3{height:36px}
   @media print{
-    body > *:not(#carta-overlay){display:none !important}
+    body > *:not(.ov-print){display:none !important}
     #carta-overlay{position:static !important;overflow:visible !important;background:#fff !important}
     #carta-overlay .nao-imprimir{display:none !important}
     #carta-folha{margin:0 !important;width:auto !important;padding:0 !important;box-shadow:none !important;zoom:var(--ctz,1)}
@@ -1738,7 +1740,7 @@ async function ctGerar(){
   if(CT.podeEditar && !CT.salva) await ctSalvar(true);
   ctInjetarCss();
   let ov = document.getElementById('carta-overlay'); if(ov) ov.remove();
-  ov = document.createElement('div'); ov.id = 'carta-overlay';
+  ov = document.createElement('div'); ov.id = 'carta-overlay'; ov.className = 'ov-print';
   ov.innerHTML = `<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap">
       <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
       <label style="color:#ddd;font-size:12px;display:flex;align-items:center;gap:6px;margin:0;width:auto">✍️ Assina:
@@ -1912,7 +1914,7 @@ function osInjetarCss(){
   .os-wrap td{padding:0;border:none;vertical-align:top}
   .os-wrap thead td{text-align:center;padding-bottom:4mm}
   @media print{
-    body > *:not(#os-overlay){display:none !important}
+    body > *:not(.ov-print){display:none !important}
     #os-overlay{position:static !important;overflow:visible !important;background:#fff !important}
     #os-overlay .nao-imprimir{display:none !important}
     .os-folha{margin:0 !important;width:auto !important;padding:0 !important;box-shadow:none !important;min-height:0 !important}
@@ -2327,7 +2329,7 @@ async function osGerar(){
   else osLimpo();
   osInjetarCss();
   let ov = document.getElementById('os-overlay'); if(ov) ov.remove();
-  ov = document.createElement('div'); ov.id = 'os-overlay';
+  ov = document.createElement('div'); ov.id = 'os-overlay'; ov.className = 'ov-print';
   ov.innerHTML = `<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap">
       <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
       <button class="btn" style="background:#2c4870" onclick="osBaixarWord()">📝 Baixar Word (.docx)</button>
@@ -2699,6 +2701,559 @@ function osNovaConversa(){
   if(OS.chat.msgs.length>1 && !confirm('Começar uma nova conversa? A atual será descartada.')) return;
   osAbrirAssistente(OS.chat.origem);
 }
+// ================= ABA PRODUTIVIDADE (P3) =================
+const PROD_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-produtividade";
+async function apiProd(params={}){
+  const r = await fetch(PROD_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify({op:'produtividadeDados', token: ST.token, ...params})
+  });
+  const d = await r.json();
+  if(!d.ok){ throw new Error(d.erro || 'Erro desconhecido'); }
+  return d;
+}
+// metricas: k = chave, l = rotulo, g = grupo, f = formato (n inteiro, kg decimal, r reais)
+const PROD_MET = [
+  {k:'t',   l:'Ocorrências de tráfico',            g:'Tráfico', f:'n'},
+  {k:'at',  l:'Autores presos (tráfico)',          g:'Tráfico', f:'n'},
+  {k:'mi',  l:'Menores infratores (tráfico)',      g:'Tráfico', f:'n'},
+  {k:'cpg', l:'Cocaína – pino grande',             g:'Drogas',  f:'n'},
+  {k:'cpp', l:'Cocaína – pino pequeno',            g:'Drogas',  f:'n'},
+  {k:'cpap',l:'Cocaína – papelote',                g:'Drogas',  f:'n'},
+  {k:'cb',  l:'Cocaína – barra (kg)',              g:'Drogas',  f:'kg'},
+  {k:'crp', l:'Crack – pedras',                    g:'Drogas',  f:'n'},
+  {k:'crb', l:'Crack – barra',                     g:'Drogas',  f:'kg'},
+  {k:'mb',  l:'Maconha – buchas',                  g:'Drogas',  f:'n'},
+  {k:'mt',  l:'Maconha – tabletes',                g:'Drogas',  f:'n'},
+  {k:'mbk', l:'Maconha – barra (kg)',              g:'Drogas',  f:'kg'},
+  {k:'din', l:'Dinheiro apreendido',               g:'Dinheiro',f:'r'},
+  {k:'fg',  l:'Foragidos capturados',              g:'Outros',  f:'n'},
+  {k:'ar',  l:'Armas de fogo apreendidas',         g:'Armas',   f:'n'},
+  {k:'mu',  l:'Munições apreendidas',              g:'Armas',   f:'n'},
+  {k:'au',  l:'Autores presos (arma de fogo)',     g:'Armas',   f:'n'},
+  {k:'cv',  l:'Crimes violentos (resp. imediata)', g:'Violentos',f:'n'},
+  {k:'apv', l:'Autores presos (crimes violentos)', g:'Violentos',f:'n'},
+  {k:'vap', l:'Veículos apreendidos',              g:'Veículos',f:'n'},
+  {k:'vr',  l:'Veículos recuperados',              g:'Veículos',f:'n'},
+  {k:'avr', l:'Autores presos (veículos)',         g:'Veículos',f:'n'},
+  // derivadas
+  {k:'coc', l:'Cocaína – porções (pinos+papelotes)',g:'Derivadas',f:'n', d:r=>r.cpg+r.cpp+r.cpap},
+  {k:'dro', l:'Drogas – total de porções/unidades', g:'Derivadas',f:'n', d:r=>r.cpg+r.cpp+r.cpap+r.crp+r.mb+r.mt},
+  {k:'kgt', l:'Drogas em barra – total (≈ kg)',       g:'Derivadas',f:'kg',d:r=>r.cb+r.crb+r.mbk},
+  {k:'pre', l:'Autores presos – soma das categorias',g:'Derivadas',f:'n', d:r=>r.at+r.au+r.apv+r.avr},
+  {k:'reg', l:'Registros (envios do turno)',        g:'Derivadas',f:'n', d:r=>1},
+];
+const PROD_MK = Object.fromEntries(PROD_MET.map(m=>[m.k,m]));
+const PROD_KPIS = ['reg','t','at','mi','dro','coc','crp','mb','kgt','din','ar','mu','fg','cv','apv','vap','vr','pre'];
+const PROD_DOW = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const PROD_MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const PROD_CORES = ['#33502f','#b8a76a','#2c4870','#a4202a','#8f7f45','#5a8f6a','#c77d2b','#6b4c9a','#3a7d44','#888'];
+let PROD = { linhas:[], versao:null, atualizado:null, link:'', conferencia:null, totalPlanilha:null,
+  F:{de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:'',gran:'semana',metrica:'t',porPel:false},
+  ord:{k:'data',d:-1}, pag:0, timer:null, charts:{}, erro:'' };
+
+function prodNum(v, f){
+  v = Number(v)||0;
+  if(f==='r') return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  if(f==='kg') return v.toLocaleString('pt-BR',{maximumFractionDigits:3})+' kg';
+  return v.toLocaleString('pt-BR',{maximumFractionDigits:2});
+}
+function prodVal(r,k){ const m=PROD_MK[k]; return m&&m.d ? m.d(r) : (Number(r[k])||0); }
+function prodSoma(rows){
+  const s={}; PROD_MET.forEach(m=>{ s[m.k]=0; });
+  rows.forEach(r=>PROD_MET.forEach(m=>{ s[m.k]+=prodVal(r,m.k); }));
+  return s;
+}
+function prodDataBR(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return d+'/'+m+'/'+y; }
+function prodDia(iso){ return new Date(iso+'T12:00:00'); }
+function prodIso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function prodSomaDias(iso,n){ const d=prodDia(iso); d.setDate(d.getDate()+n); return prodIso(d); }
+function prodSemana(iso){ const d=prodDia(iso); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); return prodIso(d); } // segunda-feira
+function prodMesNome(ym){ const [y,m]=ym.split('-'); return PROD_MESES[+m-1]+'/'+y.slice(2); }
+
+// aplica filtros; ignoraData=true para calcular o periodo anterior
+function prodFiltrar(F, ignoraData){
+  const q = F.busca.trim().toLowerCase();
+  const minDin = Number(String(F.minDin).replace(',','.'))||0;
+  return PROD.linhas.filter(r=>{
+    if(!r.data) return false;
+    if(!ignoraData){ if(F.de && r.data<F.de) return false; if(F.ate && r.data>F.ate) return false; }
+    if(F.mes && r.data.slice(0,7)!==F.mes) return false;
+    if(F.pels.length && !F.pels.includes(r.pel||'(sem pelotão)')) return false;
+    if(F.tipoPel==='GER' && /CHOQUE/.test(r.pel)) return false;
+    if(F.tipoPel==='CHOQUE' && !/CHOQUE/.test(r.pel)) return false;
+    if(F.dow.length && !F.dow.includes(prodDia(r.data).getDay())) return false;
+    if(F.dup==='ocultar' && r.dup) return false;
+    if(F.dup==='so' && !r.dup) return false;
+    if(F.alerta==='sem' && r.flags.length) return false;
+    if(F.alerta==='so' && !r.flags.length) return false;
+    if(minDin && r.din<minDin) return false;
+    for(const c of F.cats){
+      if(c==='trafico' && !(r.t>0||r.at>0)) return false;
+      if(c==='arma' && !(r.ar>0||r.au>0||r.mu>0)) return false;
+      if(c==='violento' && !(r.cv>0||r.apv>0)) return false;
+      if(c==='veic' && !(r.vap>0||r.vr>0||r.avr>0)) return false;
+      if(c==='dinheiro' && !(r.din>0)) return false;
+      if(c==='forag' && !(r.fg>0)) return false;
+      if(c==='menor' && !(r.mi>0)) return false;
+    }
+    if(F.droga==='coc' && !(r.cpg+r.cpp+r.cpap+r.cb>0)) return false;
+    if(F.droga==='crack' && !(r.crp+r.crb>0)) return false;
+    if(F.droga==='mac' && !(r.mb+r.mt+r.mbk>0)) return false;
+    if(F.droga==='outras' && !r.outros) return false;
+    if(q && !((r.outros||'')+' '+(r.calibres||'')+' '+(r.pel||'')+' '+r.data+' '+prodDataBR(r.data)+' '+r.id).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function prodPeriodoPrev(F){
+  if(!(F.de && F.ate)) return null;
+  const n = Math.round((prodDia(F.ate)-prodDia(F.de))/86400000)+1;
+  return {de:prodSomaDias(F.de,-n), ate:prodSomaDias(F.de,-1), n};
+}
+
+async function renderAreaProdutividade(areaId, acesso){
+  const box = document.getElementById('area-corpo');
+  prodInjetarCss();
+  if(PROD.timer){ clearInterval(PROD.timer); PROD.timer=null; }
+  box.innerHTML = '<div class="carregando">Lendo a planilha de produtividade…</div>';
+  try{
+    const d = await apiProd();
+    prodReceber(d, true);
+  }catch(e){ box.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p><button class="btn" onclick="renderAreaProdutividade('P3','${acesso}')">Tentar de novo</button>`; return; }
+  prodMontar();
+  PROD.timer = setInterval(prodVerificar, 120000);
+  if(!window._prodVis){ window._prodVis=true; document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) prodVerificar(); }); }
+}
+function prodReceber(d, primeira){
+  const antes = PROD.linhas.length;
+  PROD.versao = d.versao; PROD.atualizado = d.atualizado;
+  if(d.mudou!==false){
+    PROD.linhas = d.linhas||[]; PROD.conferencia = d.conferencia; PROD.totalPlanilha = d.totalPlanilha; PROD.link = d.link||PROD.link;
+    if(primeira){ // periodo padrao: tudo; ancora no mes mais recente
+      PROD.F = Object.assign({}, PROD.F, {de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:''});
+      PROD.pag = 0;
+    }
+  }
+  return PROD.linhas.length - antes;
+}
+async function prodVerificar(manual){
+  if(!document.getElementById('prod-root')){ if(PROD.timer){ clearInterval(PROD.timer); PROD.timer=null; } return; }
+  const st = document.getElementById('prod-status');
+  if(manual && st) st.textContent = '⏳ Verificando a planilha…';
+  try{
+    const d = await apiProd({versao: PROD.versao});
+    if(d.mudou===false){ PROD.atualizado = d.atualizado; prodStatus(manual ? 'Planilha conferida: sem alterações.' : ''); return; }
+    const dif = prodReceber(d, false);
+    prodMontar(true);
+    prodStatus('🔄 Planilha atualizada'+(dif? ' ('+(dif>0?'+':'')+dif+' registro'+(Math.abs(dif)===1?'':'s')+')':'')+'.', true);
+  }catch(e){ prodStatus('⚠️ '+e.message); }
+}
+function prodStatus(msg, destaque){
+  const st = document.getElementById('prod-status'); if(!st) return;
+  const h = PROD.atualizado ? new Date(PROD.atualizado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+  st.innerHTML = (msg ? `<b style="${destaque?'color:#33502f':''}">${esc(msg)}</b> ` : '') + `<span style="color:#888">Última verificação ${esc(h)} · automática a cada 2 min</span>`;
+}
+
+function prodInjetarCss(){
+  if(document.getElementById('prod-css')) return;
+  const s = document.createElement('style'); s.id='prod-css';
+  s.textContent = `
+  .pd-grid{display:grid;gap:14px}
+  .pd-g2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+  .pd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+  .pd-kpi{background:#fff;border-radius:10px;padding:11px 13px;border-left:4px solid var(--khaki);box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer}
+  .pd-kpi.sel{border-left-color:var(--verde);outline:2px solid var(--verde)}
+  .pd-kpi .n{font-size:21px;font-weight:700;color:var(--preto);line-height:1.15}
+  .pd-kpi .l{font-size:11px;color:#777;margin-top:2px}
+  .pd-kpi .dl{font-size:11px;margin-top:3px;font-weight:600}
+  .pd-up{color:#33502f}.pd-dn{color:#a4202a}.pd-eq{color:#888}
+  .pd-fil{background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .pd-fil .lin{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin-bottom:10px}
+  .pd-fil .lin>div{min-width:120px}
+  .pd-fil label{display:block;font-size:11px;color:#666;margin:0 0 3px;font-weight:600}
+  .pd-chip{display:inline-block;padding:4px 11px;border-radius:14px;border:1px solid #ccc4a8;background:#fff;font-size:12px;cursor:pointer;margin:0 4px 4px 0;user-select:none}
+  .pd-chip.on{background:var(--verde);color:#fff;border-color:var(--verde)}
+  .pd-sm{padding:5px 11px;font-size:12px}
+  .pd-box{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  .pd-box h3{margin:0 0 10px;font-size:14px;color:var(--preto)}
+  .pd-box canvas{max-height:300px}
+  .pd-tb{overflow:auto;max-height:520px}
+  .pd-tb table{font-size:12px;min-width:100%}
+  .pd-tb th{cursor:pointer;white-space:nowrap;position:sticky;top:0;z-index:1}
+  .pd-tb td.n,.pd-tb th.n{text-align:right;white-space:nowrap}
+  .pd-warn{background:#fff7e0;border:1px solid #e0b84a;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px}
+  .pd-ok{background:#e8f4ea;border:1px solid #9fcca6;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px}
+  .pd-stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 18px;font-size:13px}
+  .pd-stat div{display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:3px 0;gap:10px}
+  .pd-stat b{white-space:nowrap}
+  #prod-overlay{position:fixed;inset:0;z-index:9999;background:#555;overflow:auto}
+  .pd-folha{background:#fff;width:210mm;min-height:297mm;margin:14px auto;padding:12mm;box-sizing:border-box;font-family:Arial,sans-serif;font-size:10.5pt;color:#000}
+  .pd-folha h1{font-size:15pt;margin:0 0 2pt;text-align:center}
+  .pd-folha h2{font-size:11.5pt;margin:12pt 0 4pt;border-bottom:1.5px solid #000;padding-bottom:2pt}
+  .pd-folha table{border-collapse:collapse;width:100%;font-size:8.5pt;border-radius:0}
+  .pd-folha th,.pd-folha td{border:1px solid #000;padding:2pt 4pt;text-align:left;text-transform:none;letter-spacing:0;background:#fff;color:#000}
+  .pd-folha th{background:#e3e3e3;font-size:8pt}
+  .pd-folha td.n,.pd-folha th.n{text-align:right}
+  .pd-folha img{max-width:100%;page-break-inside:avoid}
+  .pd-folha .sub{text-align:center;font-size:9pt;color:#333;margin-bottom:6pt}
+  .pd-folha .kp{display:grid;grid-template-columns:repeat(4,1fr);gap:4pt}
+  .pd-folha .kp div{border:1px solid #000;padding:3pt 5pt;font-size:8.5pt}
+  .pd-folha .kp b{display:block;font-size:12pt}
+  @media print{
+    body > *:not(.ov-print){display:none !important}
+    #prod-overlay{position:static !important;overflow:visible !important;background:#fff !important}
+    #prod-overlay .nao-imprimir{display:none !important}
+    .pd-folha{margin:0 !important;width:auto !important;padding:0 !important;min-height:0 !important}
+    html,body{background:#fff !important}
+  }`;
+  document.head.appendChild(s);
+}
+
+function prodMontar(preservar){
+  const box = document.getElementById('area-corpo'); if(!box) return;
+  if(!PROD.linhas.length){ box.innerHTML = '<div id="prod-root"><p>Nenhum registro encontrado na planilha.</p></div>'; return; }
+  const pels = [...new Set(PROD.linhas.map(r=>r.pel||'(sem pelotão)'))].sort();
+  const meses = [...new Set(PROD.linhas.filter(r=>r.data).map(r=>r.data.slice(0,7)))].sort().reverse();
+  const F = PROD.F;
+  // se o filtro de pelotao/mes nao existe mais, limpa
+  F.pels = F.pels.filter(p=>pels.includes(p)); if(F.mes && !meses.includes(F.mes)) F.mes='';
+  const chip = (grupo,val,rot,on)=>`<span class="pd-chip ${on?'on':''}" data-g="${grupo}" data-v="${esc(val)}">${esc(rot)}</span>`;
+  const metOpts = ['Tráfico','Drogas','Dinheiro','Armas','Violentos','Veículos','Outros','Derivadas'].map(g=>`<optgroup label="${g}">${PROD_MET.filter(m=>m.g===g).map(m=>`<option value="${m.k}" ${F.metrica===m.k?'selected':''}>${esc(m.l)}</option>`).join('')}</optgroup>`).join('');
+  const vis = prodVisoes();
+  box.innerHTML = `<div id="prod-root">
+   <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+     <div id="prod-status" style="font-size:12px"></div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap">
+       <button class="btn secundario pd-sm" onclick="prodVerificar(true)">↻ Atualizar agora</button>
+       <a class="btn secundario pd-sm" style="text-decoration:none" href="${esc(PROD.link)}" target="_blank" rel="noopener">📄 Abrir planilha</a>
+       <button class="btn pd-sm" onclick="prodWhats()">💬 WhatsApp</button>
+       <button class="btn pd-sm" onclick="prodRelatorio()">🖨️ Relatório / PDF</button>
+       <button class="btn pd-sm" onclick="prodCsv()">⬇️ CSV</button>
+     </div>
+   </div>
+   <div id="prod-aviso"></div>
+   <div class="pd-fil">
+     <div class="lin">
+       <div><label>De</label><input type="date" id="pf-de" value="${F.de}"></div>
+       <div><label>Até</label><input type="date" id="pf-ate" value="${F.ate}"></div>
+       <div style="min-width:160px"><label>Mês</label><select id="pf-mes"><option value="">Todos</option>${meses.map(m=>`<option value="${m}" ${F.mes===m?'selected':''}>${prodMesNome(m)}</option>`).join('')}</select></div>
+       <div style="flex:1;min-width:230px"><label>Atalhos de período</label>
+         ${['7d|Últimos 7 dias','30d|Últimos 30 dias','mes|Mês atual','mant|Mês anterior','ano|Ano atual','tudo|Tudo'].map(x=>{const [a,b]=x.split('|');return `<span class="pd-chip" data-at="${a}">${b}</span>`;}).join('')}</div>
+     </div>
+     <div class="lin"><div style="flex:1;min-width:100%"><label>Pelotão (clique para selecionar vários)</label>
+       ${pels.map(p=>chip('pel',p,p,F.pels.includes(p))).join('')}
+       <span style="margin-left:8px"></span>${chip('tipoPel','GER','Só GER',F.tipoPel==='GER')}${chip('tipoPel','CHOQUE','Só CHOQUE/MGER',F.tipoPel==='CHOQUE')}</div></div>
+     <div class="lin"><div style="flex:1;min-width:100%"><label>Dia da semana do fato</label>
+       ${PROD_DOW.map((n,i)=>chip('dow',String(i),n.slice(0,3),F.dow.includes(i))).join('')}</div></div>
+     <div class="lin"><div style="flex:1;min-width:100%"><label>Só registros com… (todos os marcados)</label>
+       ${[['trafico','Tráfico'],['menor','Menor infrator'],['arma','Arma/munição'],['violento','Crime violento'],['veic','Veículos'],['dinheiro','Dinheiro'],['forag','Foragido']].map(([v,n])=>chip('cat',v,n,F.cats.includes(v))).join('')}</div></div>
+     <div class="lin">
+       <div><label>Droga</label><select id="pf-droga"><option value="">Todas</option><option value="coc" ${F.droga==='coc'?'selected':''}>Com cocaína</option><option value="crack" ${F.droga==='crack'?'selected':''}>Com crack</option><option value="mac" ${F.droga==='mac'?'selected':''}>Com maconha</option><option value="outras" ${F.droga==='outras'?'selected':''}>Com outros entorpecentes</option></select></div>
+       <div><label>Dinheiro mínimo (R$)</label><input id="pf-din" inputmode="decimal" placeholder="ex: 500" value="${esc(F.minDin)}"></div>
+       <div style="flex:1;min-width:200px"><label>Busca (outros entorpecentes, calibres, linha da planilha, data)</label><input id="pf-busca" value="${esc(F.busca)}" placeholder="ex: LSD, .38, 1234"></div>
+       <div><label>Duplicados</label><select id="pf-dup"><option value="incluir" ${F.dup==='incluir'?'selected':''}>Incluir</option><option value="ocultar" ${F.dup==='ocultar'?'selected':''}>Ocultar suspeitos</option><option value="so" ${F.dup==='so'?'selected':''}>Só suspeitos</option></select></div>
+       <div><label>Alertas de dados</label><select id="pf-alerta"><option value="todos" ${F.alerta==='todos'?'selected':''}>Todos</option><option value="sem" ${F.alerta==='sem'?'selected':''}>Sem alertas</option><option value="so" ${F.alerta==='so'?'selected':''}>Só com alertas</option></select></div>
+       <div><button class="btn secundario pd-sm" id="pf-limpar">Limpar filtros</button></div>
+     </div>
+     <div class="lin" style="margin-bottom:0"><div style="flex:1;min-width:100%"><label>Visões salvas (neste aparelho)</label>
+       ${vis.map(v=>`<span class="pd-chip" data-vis="${esc(v.n)}">${esc(v.n)} <b data-visx="${esc(v.n)}" style="margin-left:4px;color:#a4202a">×</b></span>`).join('')}
+       <button class="btn secundario pd-sm" id="pf-salvar">+ Salvar filtros atuais</button></div></div>
+   </div>
+   <div id="prod-out"></div></div>`;
+  prodStatus('');
+  prodLigar();
+  prodAtualizar();
+}
+
+function prodLigar(){
+  const root = document.getElementById('prod-root'); const F = PROD.F;
+  const re = ()=>{ PROD.pag=0; prodAtualizar(); };
+  const set = (id,fn)=>{ const e=document.getElementById(id); if(e) e.addEventListener('input',()=>{ fn(e.value); re(); }); };
+  set('pf-de',v=>{F.de=v;F.mes='';prodSyncMes();}); set('pf-ate',v=>{F.ate=v;F.mes='';prodSyncMes();});
+  set('pf-mes',v=>{F.mes=v; if(v){F.de='';F.ate='';document.getElementById('pf-de').value='';document.getElementById('pf-ate').value='';}});
+  set('pf-droga',v=>F.droga=v); set('pf-din',v=>F.minDin=v); set('pf-dup',v=>F.dup=v); set('pf-alerta',v=>F.alerta=v);
+  let tb; const eb=document.getElementById('pf-busca'); eb.addEventListener('input',()=>{ clearTimeout(tb); tb=setTimeout(()=>{F.busca=eb.value;re();},250); });
+  document.getElementById('pf-limpar').onclick=()=>{ PROD.F=Object.assign(PROD.F,{de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:''}); prodMontar(); };
+  document.getElementById('pf-salvar').onclick=prodSalvarVisao;
+  root.addEventListener('click',ev=>{
+    const x=ev.target.closest('[data-visx]'); if(x){ ev.stopPropagation(); prodRemoverVisao(x.dataset.visx); return; }
+    const v=ev.target.closest('[data-vis]'); if(v){ prodAplicarVisao(v.dataset.vis); return; }
+    const at=ev.target.closest('[data-at]'); if(at){ prodAtalho(at.dataset.at); return; }
+    const c=ev.target.closest('.pd-chip[data-g]'); if(!c) return;
+    const g=c.dataset.g, val=c.dataset.v;
+    const tog=(arr,x)=>{ const i=arr.indexOf(x); if(i>=0) arr.splice(i,1); else arr.push(x); };
+    if(g==='pel') tog(F.pels,val); else if(g==='dow') tog(F.dow,+val); else if(g==='cat') tog(F.cats,val);
+    else if(g==='tipoPel') F.tipoPel = F.tipoPel===val ? '' : val;
+    if(g==='tipoPel'){ root.querySelectorAll('.pd-chip[data-g="tipoPel"]').forEach(e=>e.classList.toggle('on',F.tipoPel===e.dataset.v)); }
+    else c.classList.toggle('on');
+    re();
+  });
+}
+function prodSyncMes(){ const m=document.getElementById('pf-mes'); if(m) m.value=''; }
+function prodAtalho(a){
+  const F=PROD.F; const datas=PROD.linhas.filter(r=>r.data).map(r=>r.data).sort(); const fim=datas[datas.length-1]||prodIso(new Date());
+  const hoje=prodIso(new Date()); const ref = fim>hoje?hoje:fim;
+  F.mes='';
+  if(a==='tudo'){ F.de='';F.ate=''; }
+  else if(a==='7d'){ F.ate=ref; F.de=prodSomaDias(ref,-6); }
+  else if(a==='30d'){ F.ate=ref; F.de=prodSomaDias(ref,-29); }
+  else if(a==='mes'){ F.de=ref.slice(0,8)+'01'; F.ate=ref; }
+  else if(a==='mant'){ const d=prodDia(ref.slice(0,8)+'01'); d.setDate(0); F.ate=prodIso(d); F.de=F.ate.slice(0,8)+'01'; }
+  else if(a==='ano'){ F.de=ref.slice(0,4)+'-01-01'; F.ate=ref; }
+  prodMontar(true);
+}
+function prodVisoes(){ try{ return JSON.parse(localStorage.getItem('bi4cia_prod_visoes')||'[]'); }catch(e){ return []; } }
+function prodGravarVisoes(v){ try{ localStorage.setItem('bi4cia_prod_visoes', JSON.stringify(v)); }catch(e){} }
+function prodSalvarVisao(){
+  const n = prompt('Nome para esta visão (ex.: "Tráfico 2º PEL GER"):'); if(!n) return;
+  const v = prodVisoes().filter(x=>x.n!==n); v.push({n, F:JSON.parse(JSON.stringify(PROD.F))}); prodGravarVisoes(v); prodMontar(true);
+}
+function prodRemoverVisao(n){ prodGravarVisoes(prodVisoes().filter(x=>x.n!==n)); prodMontar(true); }
+function prodAplicarVisao(n){ const v=prodVisoes().find(x=>x.n===n); if(!v) return; PROD.F=Object.assign({}, PROD.F, JSON.parse(JSON.stringify(v.F))); prodMontar(true); }
+
+function prodDescFiltros(){
+  const F=PROD.F; const p=[];
+  if(F.mes) p.push('Mês: '+prodMesNome(F.mes)); else if(F.de||F.ate) p.push('Período: '+(F.de?prodDataBR(F.de):'início')+' a '+(F.ate?prodDataBR(F.ate):'hoje')); else p.push('Período: todo o histórico');
+  if(F.pels.length) p.push('Pelotão: '+F.pels.join(', ')); if(F.tipoPel) p.push(F.tipoPel==='GER'?'Só GER':'Só CHOQUE/MGER');
+  if(F.dow.length) p.push('Dias: '+F.dow.map(i=>PROD_DOW[i].slice(0,3)).join('/'));
+  if(F.cats.length) p.push('Com: '+F.cats.join(', ')); if(F.droga) p.push('Droga: '+F.droga);
+  if(F.minDin) p.push('Dinheiro ≥ R$ '+F.minDin); if(F.busca) p.push('Busca: "'+F.busca+'"');
+  if(F.dup!=='incluir') p.push('Duplicados: '+F.dup); if(F.alerta!=='todos') p.push('Alertas: '+F.alerta);
+  return p.join(' · ');
+}
+
+// ---------- calculo + desenho ----------
+function prodCalc(){
+  const F=PROD.F; const rows=prodFiltrar(F);
+  const s=prodSoma(rows);
+  const prevP=prodPeriodoPrev(F);
+  let prev=null, prevRows=null;
+  if(prevP){ const F2=Object.assign({},F,{de:prevP.de,ate:prevP.ate,mes:''}); prevRows=prodFiltrar(F2); prev=prodSoma(prevRows); }
+  return {rows, s, prev, prevP};
+}
+function prodAtualizar(){
+  const out=document.getElementById('prod-out'); if(!out) return;
+  const C=prodCalc(); PROD.C=C; const F=PROD.F; const {rows,s,prev}=C;
+  Object.values(PROD.charts).forEach(c=>{ try{c.destroy();}catch(e){} }); PROD.charts={};
+  const delta=(k)=>{ if(!prev) return ''; const a=s[k], b=prev[k]; if(b===0&&a===0) return '<div class="dl pd-eq">= período anterior</div>';
+    if(b===0) return '<div class="dl pd-up">▲ novo (anterior: 0)</div>';
+    const p=(a-b)/b*100; const c=p>0.5?'pd-up':p<-0.5?'pd-dn':'pd-eq'; return `<div class="dl ${c}">${p>0.5?'▲':p<-0.5?'▼':'='} ${Math.abs(p).toLocaleString('pt-BR',{maximumFractionDigits:0})}% vs. ${prodDataBR(C.prevP.de).slice(0,5)}–${prodDataBR(C.prevP.ate).slice(0,5)}</div>`; };
+  const kpis=PROD_KPIS.map(k=>{const m=PROD_MK[k]; return `<div class="pd-kpi ${F.metrica===k?'sel':''}" data-km="${k}" title="Clique para analisar esta métrica nos gráficos"><div class="n">${prodNum(s[k],m.f)}</div><div class="l">${esc(m.l)}</div>${delta(k)}</div>`;}).join('');
+  const nAlert = rows.filter(r=>r.flags.length).length;
+  out.innerHTML = `
+   <div style="font-size:12px;color:#666;margin-bottom:8px"><b>${rows.length}</b> de ${PROD.linhas.length} registros · ${esc(prodDescFiltros())}${PROD.C.prevP?` · comparando com ${prodDataBR(C.prevP.de)}–${prodDataBR(C.prevP.ate)}`:' · (escolha De/Até ou um atalho para comparar com o período anterior)'}</div>
+   ${prodAvisoQual(rows)}
+   <div class="pd-kpis">${kpis}</div>
+   <div class="pd-fil" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+     <div style="min-width:260px;flex:1"><label>Métrica nos gráficos</label><select id="pg-met">${['Tráfico','Drogas','Dinheiro','Armas','Violentos','Veículos','Outros','Derivadas'].map(g=>`<optgroup label="${g}">${PROD_MET.filter(m=>m.g===g).map(m=>`<option value="${m.k}" ${F.metrica===m.k?'selected':''}>${esc(m.l)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+     <div><label>Agrupar por</label><select id="pg-gran"><option value="dia" ${F.gran==='dia'?'selected':''}>Dia</option><option value="semana" ${F.gran==='semana'?'selected':''}>Semana</option><option value="mes" ${F.gran==='mes'?'selected':''}>Mês</option></select></div>
+     <div><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pg-pel" style="width:auto" ${F.porPel?'checked':''}> Separar por pelotão</label></div>
+   </div>
+   <div class="pd-grid pd-g2" style="margin-bottom:14px">
+     <div class="pd-box" style="grid-column:1/-1"><h3 id="t-evo"></h3><canvas id="c-evo"></canvas></div>
+     <div class="pd-box"><h3 id="t-pel"></h3><canvas id="c-pel"></canvas></div>
+     <div class="pd-box"><h3 id="t-dow"></h3><canvas id="c-dow"></canvas></div>
+     <div class="pd-box"><h3>Drogas apreendidas (porções/unidades)</h3><canvas id="c-dro"></canvas></div>
+     <div class="pd-box"><h3>Comparativo entre pelotões (principais indicadores)</h3><canvas id="c-cmp"></canvas></div>
+     <div class="pd-box"><h3>Dinheiro apreendido por mês</h3><canvas id="c-din"></canvas></div>
+     <div class="pd-box"><h3 id="t-acu"></h3><canvas id="c-acu"></canvas></div>
+   </div>
+   <div class="pd-box" style="margin-bottom:14px"><h3>📐 Estatísticas de “${esc(PROD_MK[F.metrica].l)}”</h3><div class="pd-stat" id="pd-stat"></div></div>
+   <div class="pd-box" style="margin-bottom:14px"><h3>Resumo por pelotão</h3><div class="pd-tb" id="tb-pel"></div></div>
+   <div class="pd-box" style="margin-bottom:14px"><h3>Evolução mensal</h3><div class="pd-tb" id="tb-mes"></div></div>
+   <div class="pd-grid pd-g2" style="margin-bottom:14px">
+     <div class="pd-box"><h3>🏆 Maiores apreensões de dinheiro</h3><div class="pd-tb" id="tb-topd"></div></div>
+     <div class="pd-box"><h3>🏆 Maiores apreensões de drogas (porções)</h3><div class="pd-tb" id="tb-topq"></div></div>
+   </div>
+   <div class="pd-box" style="margin-bottom:14px"><h3>Registros detalhados <span style="font-weight:400;color:#888;font-size:12px">(clique no cabeçalho para ordenar)</span></h3><div id="tb-det"></div></div>
+   ${prodQualidade()}`;
+  document.getElementById('pg-met').onchange=e=>{F.metrica=e.target.value;prodAtualizar();};
+  document.getElementById('pg-gran').onchange=e=>{F.gran=e.target.value;prodAtualizar();};
+  document.getElementById('pg-pel').onchange=e=>{F.porPel=e.target.checked;prodAtualizar();};
+  out.querySelectorAll('[data-km]').forEach(e=>e.onclick=()=>{F.metrica=e.dataset.km;prodAtualizar();});
+  prodGraficos(C); prodStats(C); prodTabelas(C); prodDetalhe();
+}
+function prodAvisoQual(rows){
+  const dup=rows.filter(r=>r.dup).length, al=rows.filter(r=>r.flags.length).length;
+  if(!al) return '';
+  return `<div class="pd-warn">⚠️ ${al} registro${al>1?'s':''} com alerta de qualidade (${dup} ${dup===1?'possível duplicidade':'possíveis duplicidades'}). Veja a seção “Qualidade dos dados” no final — os números continuam batendo com a planilha; use o filtro “Duplicados” para excluí-los das contas.</div>`;
+}
+
+function prodChaveTempo(d,g){ return g==='mes' ? d.slice(0,7) : g==='semana' ? prodSemana(d) : d; }
+function prodRotuloTempo(k,g){ return g==='mes' ? prodMesNome(k) : prodDataBR(k).slice(0,5)+(g==='semana'?' (sem.)':''); }
+function prodSerieTempo(rows,k,g,sep){
+  const chaves=new Set(); rows.forEach(r=>chaves.add(prodChaveTempo(r.data,g)));
+  let ks=[...chaves].sort();
+  // preenche lacunas
+  if(ks.length>1){ const cheio=[]; let c=ks[0]; const fim=ks[ks.length-1]; let guard=0;
+    while(c<=fim && guard++<800){ cheio.push(c); if(g==='mes'){ const [y,m]=c.split('-').map(Number); c = m===12 ? (y+1)+'-01' : y+'-'+String(m+1).padStart(2,'0'); } else c=prodSomaDias(c, g==='semana'?7:1); }
+    if(cheio.length<=800) ks=cheio; }
+  const grupos = sep ? [...new Set(rows.map(r=>r.pel||'(sem pelotão)'))].sort() : ['Total'];
+  const ds = grupos.map(gp=>{ const mp={}; rows.forEach(r=>{ if(sep && (r.pel||'(sem pelotão)')!==gp) return; const c=prodChaveTempo(r.data,g); mp[c]=(mp[c]||0)+prodVal(r,k); }); return {nome:gp, v:ks.map(c=>Math.round((mp[c]||0)*1000)/1000)}; });
+  return {ks, ds};
+}
+function prodGraficos(C){
+  const F=PROD.F, k=F.metrica, m=PROD_MK[k], rows=C.rows;
+  if(!rows.length){ document.querySelectorAll('#prod-out canvas').forEach(c=>c.outerHTML='<p style="color:#888;font-size:12px">Sem dados para os filtros escolhidos.</p>'); return; }
+  const fmt=v=>prodNum(v,m.f);
+  const tip={callbacks:{label:c=>(c.dataset.label?c.dataset.label+': ':'')+fmt(c.parsed.y!==undefined&&c.parsed.y!==null&&c.chart.config.options.indexAxis!=='y'?c.parsed.y:c.parsed.x)}};
+  const gl={dia:'dia',semana:'semana',mes:'mês'}[F.gran];
+  document.getElementById('t-evo').textContent = m.l+' por '+gl+(F.porPel?' (por pelotão)':'');
+  const ser=prodSerieTempo(rows,k,F.gran,F.porPel);
+  PROD.charts.evo=desenharGrafico('c-evo',{type:'bar',data:{labels:ser.ks.map(x=>prodRotuloTempo(x,F.gran)),datasets:ser.ds.map((d,i)=>({label:d.nome,data:d.v,backgroundColor:PROD_CORES[i%PROD_CORES.length],stack:'s'}))},
+    options:{responsive:true,plugins:{legend:{display:F.porPel},tooltip:tip},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{callback:v=>fmt(v)}}}}});
+  // por pelotao
+  const pels=[...new Set(rows.map(r=>r.pel||'(sem pelotão)'))].sort();
+  const vp=pels.map(p=>Math.round(rows.filter(r=>(r.pel||'(sem pelotão)')===p).reduce((a,r)=>a+prodVal(r,k),0)*1000)/1000);
+  document.getElementById('t-pel').textContent=m.l+' por pelotão';
+  PROD.charts.pel=desenharGrafico('c-pel',{type:'bar',data:{labels:pels,datasets:[{data:vp,backgroundColor:PROD_CORES}]},options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:tip},scales:{x:{beginAtZero:true,ticks:{callback:v=>fmt(v)}}}}});
+  // dia da semana
+  document.getElementById('t-dow').textContent=m.l+' por dia da semana';
+  const dv=[0,0,0,0,0,0,0]; rows.forEach(r=>{dv[prodDia(r.data).getDay()]+=prodVal(r,k);});
+  PROD.charts.dow=desenharGrafico('c-dow',{type:'bar',data:{labels:PROD_DOW,datasets:[{data:dv.map(v=>Math.round(v*1000)/1000),backgroundColor:'#b8a76a'}]},options:{plugins:{legend:{display:false},tooltip:tip},scales:{y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}}}}});
+  // drogas
+  const s=C.s; const dl=[['Cocaína pino grande',s.cpg],['Cocaína pino pequeno',s.cpp],['Cocaína papelote',s.cpap],['Crack pedras',s.crp],['Maconha buchas',s.mb],['Maconha tabletes',s.mt]];
+  PROD.charts.dro=desenharGrafico('c-dro',{type:'bar',data:{labels:dl.map(x=>x[0]),datasets:[{data:dl.map(x=>x[1]),backgroundColor:['#8f7f45','#b8a76a','#d8cd9b','#c77d2b','#33502f','#5a8f6a']}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+  // comparativo
+  const ind=[['t','Ocorr. tráfico'],['at','Autores tráfico'],['ar','Armas'],['cv','Crimes violentos'],['vap','Veíc. apreend.'],['fg','Foragidos']];
+  PROD.charts.cmp=desenharGrafico('c-cmp',{type:'bar',data:{labels:ind.map(x=>x[1]),datasets:pels.map((p,i)=>({label:p,backgroundColor:PROD_CORES[i%PROD_CORES.length],data:ind.map(([kk])=>rows.filter(r=>(r.pel||'(sem pelotão)')===p).reduce((a,r)=>a+(r[kk]||0),0))}))},options:{plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}});
+  // dinheiro por mes
+  const ms=prodSerieTempo(rows,'din','mes',false);
+  PROD.charts.din=desenharGrafico('c-din',{type:'bar',data:{labels:ms.ks.map(x=>prodMesNome(x)),datasets:[{data:ms.ds[0].v,backgroundColor:'#33502f'}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>prodNum(c.parsed.y,'r')}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'R$ '+Number(v).toLocaleString('pt-BR',{notation:'compact'})}}}}});
+  // acumulado
+  document.getElementById('t-acu').textContent=m.l+' – acumulado';
+  const sd=prodSerieTempo(rows,k,F.gran==='mes'?'mes':'dia',false); let ac=0;
+  PROD.charts.acu=desenharGrafico('c-acu',{type:'line',data:{labels:sd.ks.map(x=>prodRotuloTempo(x,F.gran==='mes'?'mes':'dia')),datasets:[{data:sd.ds[0].v.map(v=>{ac+=v;return Math.round(ac*1000)/1000;}),borderColor:'#2c4870',backgroundColor:'rgba(44,72,112,.12)',fill:true,pointRadius:0,tension:.2}]},options:{plugins:{legend:{display:false},tooltip:tip},scales:{y:{beginAtZero:true,ticks:{callback:v=>fmt(v)}}}}});
+}
+function prodStats(C){
+  const F=PROD.F,k=F.metrica,m=PROD_MK[k],rows=C.rows; const el=document.getElementById('pd-stat'); if(!el) return;
+  if(!rows.length){ el.innerHTML='<div>Sem dados.</div>'; return; }
+  const f=v=>prodNum(v,m.f); const tot=C.s[k];
+  const vals=rows.map(r=>prodVal(r,k)).sort((a,b)=>a-b);
+  const med=vals.length%2?vals[(vals.length-1)/2]:(vals[vals.length/2-1]+vals[vals.length/2])/2;
+  const porDia={}; rows.forEach(r=>{porDia[r.data]=(porDia[r.data]||0)+prodVal(r,k);});
+  const dias=Object.keys(porDia).sort(); const iniD=F.de||dias[0], fimD=F.ate||dias[dias.length-1];
+  const nCal=Math.round((prodDia(fimD)-prodDia(iniD))/86400000)+1;
+  const melhor=dias.reduce((a,d)=>porDia[d]>porDia[a]?d:a,dias[0]);
+  const porPel={}; rows.forEach(r=>{const p=r.pel||'(sem pelotão)';porPel[p]=(porPel[p]||0)+prodVal(r,k);});
+  const lider=Object.keys(porPel).sort((a,b)=>porPel[b]-porPel[a])[0];
+  const mean=tot/rows.length; const sd=Math.sqrt(vals.reduce((a,v)=>a+(v-mean)**2,0)/vals.length);
+  const porDow=[0,0,0,0,0,0,0]; rows.forEach(r=>{porDow[prodDia(r.data).getDay()]+=prodVal(r,k);});
+  const dw=porDow.indexOf(Math.max(...porDow));
+  const mx=rows.reduce((a,r)=>prodVal(r,k)>prodVal(a,k)?r:a,rows[0]);
+  const t=[
+    ['Total no filtro',f(tot)],['Registros considerados',rows.length],
+    ['Média por registro',f(mean)],['Mediana por registro',f(med)],['Desvio-padrão',f(sd)],
+    ['Média por dia (calendário)',f(tot/Math.max(1,nCal))],['Dias com registro / no período',dias.length+' / '+nCal],
+    ['Melhor dia',prodDataBR(melhor)+' ('+f(porDia[melhor])+')'],['Maior registro único',f(prodVal(mx,k))+' ('+prodDataBR(mx.data)+', '+(mx.pel||'—')+')'],
+    ['Pelotão que mais contribui',lider+' ('+(tot?Math.round(porPel[lider]/tot*100):0)+'%)'],['Dia da semana mais forte',PROD_DOW[dw]+' ('+(tot?Math.round(porDow[dw]/tot*100):0)+'%)'],
+  ];
+  if(C.prev){ const a=tot,b=C.prev[k]; t.push(['Período anterior',f(b)]); t.push(['Variação',b? (a-b>=0?'+':'')+((a-b)/b*100).toFixed(1).replace('.',',')+'%' : 'n/d']); }
+  const s=C.s; if(s.t>0) t.push(['Autores presos por ocorrência de tráfico',(s.at/s.t).toLocaleString('pt-BR',{maximumFractionDigits:2})]);
+  if(s.din>0){ const cd=rows.filter(r=>r.din>0).length; t.push(['Valor médio por apreensão de dinheiro',prodNum(s.din/cd,'r')+' ('+cd+' reg.)']); }
+  if(s.ar>0) t.push(['Munições por arma',(s.mu/s.ar).toLocaleString('pt-BR',{maximumFractionDigits:1})]);
+  el.innerHTML=t.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('');
+}
+const PROD_COLS_TB=['reg','t','at','mi','dro','kgt','din','ar','mu','fg','cv','apv','vap','vr'];
+const PROD_CURTO={reg:'Reg.',t:'Tráfico',at:'Autores',mi:'Menores',dro:'Porções',kgt:'Barras kg',din:'Dinheiro',ar:'Armas',mu:'Munições',fg:'Forag.',cv:'C.viol.',apv:'Aut.viol.',vap:'Veíc.apr.',vr:'Veíc.rec.'};
+function prodTabelaAgrup(grupos, titulo){ // grupos: [[rotulo, rows]]
+  const tot=prodSoma(grupos.flatMap(g=>g[1]));
+  const lin=(rot,s,b)=>`<tr style="${b?'font-weight:bold;background:#f4f1e6':''}"><td style="white-space:nowrap">${esc(rot)}</td>${PROD_COLS_TB.map(k=>`<td class="n">${prodNum(s[k],PROD_MK[k].f==='r'?'r':PROD_MK[k].f==='kg'?'':'n').replace(' kg','')}</td>`).join('')}</tr>`;
+  return `<table><thead><tr><th>${titulo}</th>${PROD_COLS_TB.map(k=>`<th class="n">${PROD_CURTO[k]}</th>`).join('')}</tr></thead><tbody>${grupos.map(g=>lin(g[0],prodSoma(g[1]))).join('')}${lin('TOTAL',tot,true)}</tbody></table>`;
+}
+function prodTabelas(C){
+  const rows=C.rows;
+  const gp={}; rows.forEach(r=>{const p=r.pel||'(sem pelotão)';(gp[p]=gp[p]||[]).push(r);});
+  document.getElementById('tb-pel').innerHTML = rows.length ? prodTabelaAgrup(Object.keys(gp).sort().map(p=>[p,gp[p]]),'Pelotão') : '<p style="color:#888">Sem dados.</p>';
+  const gm={}; rows.forEach(r=>{const m=r.data.slice(0,7);(gm[m]=gm[m]||[]).push(r);});
+  document.getElementById('tb-mes').innerHTML = rows.length ? prodTabelaAgrup(Object.keys(gm).sort().map(m=>[prodMesNome(m),gm[m]]),'Mês') : '<p style="color:#888">Sem dados.</p>';
+  const top=(fn,fmt,col)=>{ const t=rows.filter(r=>fn(r)>0).sort((a,b)=>fn(b)-fn(a)).slice(0,10);
+    return t.length?`<table><thead><tr><th>Data</th><th>Pelotão</th><th class="n">${col}</th><th>Linha</th></tr></thead><tbody>${t.map(r=>`<tr><td>${prodDataBR(r.data)}</td><td>${esc(r.pel)}</td><td class="n"><b>${fmt(fn(r))}</b></td><td>${r.id}</td></tr>`).join('')}</tbody></table>`:'<p style="color:#888">Sem registros.</p>'; };
+  document.getElementById('tb-topd').innerHTML=top(r=>r.din,v=>prodNum(v,'r'),'Valor');
+  document.getElementById('tb-topq').innerHTML=top(r=>prodVal(r,'dro'),v=>prodNum(v,'n'),'Porções');
+}
+const PROD_DET=[['data','Data fato'],['pel','Pelotão'],['t','Tráfico'],['at','Autores'],['mi','Menores'],['dro','Porções'],['kgt','kg'],['din','Dinheiro'],['ar','Armas'],['mu','Munições'],['fg','Forag.'],['cv','C.viol.'],['vap','Veíc.apr.'],['vr','Veíc.rec.'],['id','Linha']];
+function prodDetalhe(){
+  const el=document.getElementById('tb-det'); if(!el) return; const rows=(PROD.C?PROD.C.rows:[]).slice();
+  const {k,d}=PROD.ord; rows.sort((a,b)=>{ const x=(k==='data'||k==='pel')?a[k]:prodVal(a,k), y=(k==='data'||k==='pel')?b[k]:prodVal(b,k); return (x>y?1:x<y?-1:0)*d || (a.id-b.id)*d; });
+  const PP=40, np=Math.max(1,Math.ceil(rows.length/PP)); if(PROD.pag>=np) PROD.pag=np-1;
+  const pg=rows.slice(PROD.pag*PP,PROD.pag*PP+PP);
+  el.innerHTML=`<div class="pd-tb"><table><thead><tr>${PROD_DET.map(([kk,l])=>`<th data-o="${kk}" class="${kk==='data'||kk==='pel'?'':'n'}">${l}${PROD.ord.k===kk?(PROD.ord.d>0?' ▲':' ▼'):''}</th>`).join('')}<th>Obs.</th></tr></thead><tbody>
+   ${pg.map(r=>`<tr title="${esc(r.flags.join(' · '))}"><td style="white-space:nowrap">${prodDataBR(r.data)}</td><td style="white-space:nowrap">${esc(r.pel)}</td>
+     ${['t','at','mi','dro','kgt','din','ar','mu','fg','cv','vap','vr'].map(kk=>{const v=prodVal(r,kk);return `<td class="n" style="${v?'':'color:#ccc'}">${v?prodNum(v,kk==='din'?'r':'n').replace(' kg',''):'–'}</td>`;}).join('')}
+     <td class="n">${r.id}</td><td style="font-size:11px;max-width:260px">${r.flags.length?'<span style="color:#a4202a">⚠ '+esc(r.flags.join('; '))+'</span> ':''}${esc([r.outros,r.calibres&&'cal.: '+r.calibres].filter(Boolean).join(' | '))}</td></tr>`).join('')||'<tr><td colspan="16" style="color:#888">Sem registros.</td></tr>'}
+   </tbody></table></div>
+   <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario pd-sm" id="pd-ant" ${PROD.pag<=0?'disabled':''}>‹ Anterior</button> Página ${PROD.pag+1} de ${np} <button class="btn secundario pd-sm" id="pd-prox" ${PROD.pag>=np-1?'disabled':''}>Próxima ›</button></div>`;
+  el.querySelectorAll('th[data-o]').forEach(th=>th.onclick=()=>{ const kk=th.dataset.o; PROD.ord = PROD.ord.k===kk ? {k:kk,d:-PROD.ord.d} : {k:kk,d:(kk==='pel'?1:-1)}; prodDetalhe(); });
+  const a=document.getElementById('pd-ant'), p=document.getElementById('pd-prox');
+  if(a) a.onclick=()=>{PROD.pag--;prodDetalhe();}; if(p) p.onclick=()=>{PROD.pag++;prodDetalhe();};
+}
+function prodQualidade(){
+  const all=PROD.linhas; const al=all.filter(r=>r.flags.length); const cf=PROD.conferencia;
+  let h='<div class="pd-box"><h3>🔎 Qualidade dos dados e conferência com a planilha</h3>';
+  if(cf){
+    const ks=Object.keys(cf.diferencas);
+    h += cf.ok ? '<div class="pd-ok">✅ A soma de todas as linhas confere com a linha “TOTAL” da planilha.</div>'
+      : `<div class="pd-warn">A linha “TOTAL” da planilha difere da soma dos registros em: ${ks.map(k=>`<b>${esc((PROD_MK[k]||{l:k}).l)}</b> (planilha ${prodNum(cf.diferencas[k].plan,(PROD_MK[k]||{}).f)} × registros ${prodNum(cf.diferencas[k].lido,(PROD_MK[k]||{}).f)})`).join('; ')}. Costuma ocorrer quando a fórmula do total não cobre linhas novas ou há texto em células numéricas. Os números deste painel usam a soma dos registros.</div>`;
+  }
+  h += `<p style="font-size:12px;color:#666;margin:0 0 8px">${all.length} registros lidos · ${all.filter(r=>r.vazio).length} sem nenhum quantitativo · ${al.length} com alerta${all.some(r=>!r.data)?' · <b>'+all.filter(r=>!r.data).length+' sem data (fora dos filtros e gráficos)</b>':''}.</p>`;
+  if(al.length) h += `<div class="pd-tb" style="max-height:260px"><table><thead><tr><th>Linha</th><th>Data fato</th><th>Pelotão</th><th>Alerta</th></tr></thead><tbody>${al.map(r=>`<tr><td>${r.id}</td><td>${prodDataBR(r.data)}</td><td>${esc(r.pel||'—')}</td><td>${esc(r.flags.join('; '))}</td></tr>`).join('')}</tbody></table></div>`;
+  return h+'<p style="font-size:11px;color:#888;margin:8px 0 0">“Linha” = número da linha na planilha. Correções devem ser feitas na própria planilha: o sistema se atualiza sozinho.</p></div>';
+}
+
+// ---------- compartilhar ----------
+function prodTextoResumo(){
+  const C=PROD.C||prodCalc(); const s=C.s; const F=PROD.F; const f=(k)=>prodNum(s[k],PROD_MK[k].f);
+  const L=[]; L.push('*📊 PRODUTIVIDADE – 4ª Cia PM Ind GER*'); L.push(prodDescFiltros()); L.push('Registros: '+C.rows.length); L.push('');
+  L.push('*TRÁFICO*: '+f('t')+' ocorr. · '+f('at')+' autores · '+f('mi')+' menores');
+  L.push('*Drogas*: cocaína '+f('coc')+' porções'+(s.cb?' + '+prodNum(s.cb,'kg'):'')+' · crack '+f('crp')+' pedras'+(s.crb?' + '+prodNum(s.crb,'kg'):'')+' · maconha '+f('mb')+' buchas/'+f('mt')+' tabletes'+(s.mbk?' + '+prodNum(s.mbk,'kg'):''));
+  if(s.din) L.push('*Dinheiro*: '+f('din'));
+  if(s.ar||s.mu||s.au) L.push('*Armas*: '+f('ar')+' armas · '+f('mu')+' munições · '+f('au')+' autores');
+  if(s.cv||s.apv) L.push('*Crimes violentos*: '+f('cv')+' · '+f('apv')+' autores presos');
+  if(s.vap||s.vr||s.avr) L.push('*Veículos*: '+f('vap')+' apreendidos · '+f('vr')+' recuperados · '+f('avr')+' autores');
+  if(s.fg) L.push('*Foragidos*: '+f('fg'));
+  L.push('*Total de autores presos (soma)*: '+f('pre'));
+  const gp={}; C.rows.forEach(r=>{const p=r.pel||'(sem pelotão)';(gp[p]=gp[p]||[]).push(r);});
+  const ps=Object.keys(gp).sort(); if(ps.length>1){ L.push(''); L.push('*Por pelotão* (tráfico · autores · porções · dinheiro)'); ps.forEach(p=>{const x=prodSoma(gp[p]); L.push('• '+p+': '+x.t+' · '+x.at+' · '+prodNum(x.dro,'n')+' · '+prodNum(x.din,'r'));}); }
+  if(C.prev){ const b=C.prev; L.push(''); L.push('_Vs. período anterior_: tráfico '+b.t+' → '+s.t+' · autores '+b.at+' → '+s.at); }
+  L.push(''); L.push('Fonte: planilha de produtividade do turno · gerado em '+new Date().toLocaleString('pt-BR'));
+  return L.join('\n');
+}
+function prodWhats(){
+  const t=prodTextoResumo();
+  abrirModal(`<h3 style="margin-top:0">💬 Resumo para compartilhar</h3><textarea id="pd-wtxt" style="width:100%;height:340px;font-family:monospace;font-size:12px">${esc(t)}</textarea>
+   <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" onclick="window.open('https://wa.me/?text='+encodeURIComponent(document.getElementById('pd-wtxt').value),'_blank')">Abrir no WhatsApp</button>
+   <button class="btn secundario" onclick="navigator.clipboard.writeText(document.getElementById('pd-wtxt').value).then(()=>this.textContent='✅ Copiado')">Copiar texto</button>
+   <button class="btn secundario" onclick="fecharModal()">Fechar</button></div><p style="font-size:11px;color:#888">O texto reflete os filtros aplicados na tela. Pode editar antes de enviar.</p>`);
+}
+function prodCsv(){
+  const rows=(PROD.C?PROD.C.rows:[]); const cols=PROD_MET.filter(m=>!m.d||m.k==='dro'||m.k==='kgt'||m.k==='pre');
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const head=['Linha planilha','Data do fato','Envio','Hora envio','Pelotão',...cols.map(m=>m.l),'Outros entorpecentes','Calibres','Alertas'];
+  const lin=rows.map(r=>[r.id,prodDataBR(r.data),prodDataBR(r.envio),r.hora,r.pel,...cols.map(m=>String(prodVal(r,m.k)).replace('.',',')),r.outros,r.calibres,r.flags.join('; ')].map(q).join(';'));
+  const blob=new Blob(['﻿'+head.map(q).join(';')+'\n'+lin.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='produtividade-'+prodIso(new Date())+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function prodRelatorio(){
+  const C=PROD.C||prodCalc(); const s=C.s; let ov=document.getElementById('prod-overlay'); if(ov) ov.remove();
+  const F=PROD.F; const k=F.metrica;
+  const img=id=>{ const c=document.getElementById(id); try{ return c&&c.toDataURL ? `<img src="${c.toDataURL('image/png')}">` : ''; }catch(e){ return ''; } };
+  const kp=['t','at','mi','dro','kgt','din','ar','mu','fg','cv','apv','vap','vr','pre'].map(x=>`<div>${esc(PROD_MK[x].l)}<b>${prodNum(s[x],PROD_MK[x].f)}</b></div>`).join('');
+  const gp={}; C.rows.forEach(r=>{const p=r.pel||'(sem pelotão)';(gp[p]=gp[p]||[]).push(r);}); const gm={}; C.rows.forEach(r=>{const m=r.data.slice(0,7);(gm[m]=gm[m]||[]).push(r);});
+  ov=document.createElement('div'); ov.id='prod-overlay'; ov.className='ov-print';
+  ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap">
+    <button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="prodFecharRel()">✖ Voltar</button>
+    <span style="color:#ccc;font-size:12px">Na janela de impressão, escolha “Salvar como PDF”.</span></div>
+   <div class="pd-folha"><h1>PRODUTIVIDADE OPERACIONAL – 4ª CIA PM IND GER</h1><div class="sub">${esc(prodDescFiltros())}<br>${C.rows.length} registros · gerado em ${new Date().toLocaleString('pt-BR')}</div>
+   <h2>Indicadores</h2><div class="kp">${kp}</div>
+   <h2>Por pelotão</h2>${prodTabelaAgrup(Object.keys(gp).sort().map(p=>[p,gp[p]]),'Pelotão')}
+   <h2>Evolução mensal</h2>${prodTabelaAgrup(Object.keys(gm).sort().map(m=>[prodMesNome(m),gm[m]]),'Mês')}
+   <h2>Gráficos – ${esc(PROD_MK[k].l)}</h2>${img('c-evo')}${img('c-pel')}${img('c-dow')}${img('c-cmp')}</div>`;
+  document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
+}
+function prodFecharRel(){ const ov=document.getElementById('prod-overlay'); if(ov) ov.remove(); printPagina(null); }
+
 async function renderAreaDashboard(areaId, cfg, filtros={}){
   const box = document.getElementById('area-corpo');
   let d;
