@@ -2751,8 +2751,8 @@ const PROD_KPIS = ['reg','t','at','mi','dro','coc','crp','mb','kgt','din','ar','
 const PROD_DOW = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 const PROD_MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const PROD_CORES = ['#33502f','#b8a76a','#2c4870','#a4202a','#8f7f45','#5a8f6a','#c77d2b','#6b4c9a','#3a7d44','#888'];
-let PROD = { linhas:[], versao:null, atualizado:null, link:'', conferencia:null, totalPlanilha:null,
-  F:{de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:'',gran:'semana',metrica:'t',porPel:false},
+let PROD = { linhas:[], atualRows:[], fontes:[], fr:{}, dupX:0, podeEditarFontes:false, versao:null, atualizado:null, link:'', conferencia:null, totalPlanilha:null,
+  F:{fontes:['atual'],cmpGrupo:'',de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:'',gran:'semana',metrica:'t',porPel:false},
   ord:{k:'data',d:-1}, pag:0, timer:null, charts:{}, erro:'' };
 
 function prodNum(v, f){
@@ -2821,6 +2821,7 @@ async function renderAreaProdutividade(areaId, acesso){
   box.innerHTML = '<div class="carregando">Lendo a planilha de produtividade…</div>';
   try{
     const d = await apiProd();
+    try{ await prodCarregarFontes(); }catch(e){ PROD.fontes=[]; }
     prodReceber(d, true);
   }catch(e){ box.innerHTML = `<p style="color:#a4202a">${esc(e.message)}</p><button class="btn" onclick="renderAreaProdutividade('P3','${acesso}')">Tentar de novo</button>`; return; }
   prodMontar();
@@ -2831,7 +2832,7 @@ function prodReceber(d, primeira){
   const antes = PROD.linhas.length;
   PROD.versao = d.versao; PROD.atualizado = d.atualizado;
   if(d.mudou!==false){
-    PROD.linhas = d.linhas||[]; PROD.conferencia = d.conferencia; PROD.totalPlanilha = d.totalPlanilha; PROD.link = d.link||PROD.link;
+    PROD.atualRows = d.linhas||[]; prodRecompor(); PROD.conferencia = d.conferencia; PROD.totalPlanilha = d.totalPlanilha; PROD.link = d.link||PROD.link;
     if(primeira){ // periodo padrao: tudo; ancora no mes mais recente
       PROD.F = Object.assign({}, PROD.F, {de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:''});
       PROD.pag = 0;
@@ -2914,7 +2915,7 @@ function prodInjetarCss(){
 
 function prodMontar(preservar){
   const box = document.getElementById('area-corpo'); if(!box) return;
-  if(!PROD.linhas.length){ box.innerHTML = '<div id="prod-root"><p>Nenhum registro encontrado na planilha.</p></div>'; return; }
+  if(!PROD.linhas.length){ box.innerHTML = '<div id="prod-root"><p>Nenhum registro encontrado nas fontes selecionadas.</p><button class="btn" onclick="PROD.F.fontes=[\'atual\'];prodRecompor();prodMontar()">Voltar para a planilha atual</button> <button class="btn secundario" onclick="prodFontesAbrir()">📚 Gerenciar fontes</button></div>'; return; }
   const pels = [...new Set(PROD.linhas.map(r=>r.pel||'(sem pelotão)'))].sort();
   const meses = [...new Set(PROD.linhas.filter(r=>r.data).map(r=>r.data.slice(0,7)))].sort().reverse();
   const F = PROD.F;
@@ -2936,6 +2937,9 @@ function prodMontar(preservar){
    </div>
    <div id="prod-aviso"></div>
    <div class="pd-fil">
+     <div class="lin"><div style="flex:1;min-width:100%"><label>Fontes de dados (planilha atual ao vivo + planilhas históricas)</label>
+       ${chip('fonte','atual','Planilha atual (ao vivo)',F.fontes.includes('atual'))}${PROD.fontes.map(f=>chip('fonte',String(f.id),f.nome+(f.data_min?' · '+prodDataBR(f.data_min).slice(3)+' a '+prodDataBR(f.data_max).slice(3):''),F.fontes.includes(f.id))).join('')}
+       <button class="btn secundario pd-sm" id="pf-fontes">📚 ${PROD.fontes.length?'Gerenciar':'Adicionar'} planilhas históricas</button></div></div>
      <div class="lin">
        <div><label>De</label><input type="date" id="pf-de" value="${F.de}"></div>
        <div><label>Até</label><input type="date" id="pf-ate" value="${F.ate}"></div>
@@ -2978,12 +2982,14 @@ function prodLigar(){
   let tb; const eb=document.getElementById('pf-busca'); eb.addEventListener('input',()=>{ clearTimeout(tb); tb=setTimeout(()=>{F.busca=eb.value;re();},250); });
   document.getElementById('pf-limpar').onclick=()=>{ PROD.F=Object.assign(PROD.F,{de:'',ate:'',pels:[],tipoPel:'',dow:[],mes:'',cats:[],droga:'',busca:'',dup:'incluir',alerta:'todos',minDin:''}); prodMontar(); };
   document.getElementById('pf-salvar').onclick=prodSalvarVisao;
+  document.getElementById('pf-fontes').onclick=prodFontesAbrir;
   root.addEventListener('click',ev=>{
     const x=ev.target.closest('[data-visx]'); if(x){ ev.stopPropagation(); prodRemoverVisao(x.dataset.visx); return; }
     const v=ev.target.closest('[data-vis]'); if(v){ prodAplicarVisao(v.dataset.vis); return; }
     const at=ev.target.closest('[data-at]'); if(at){ prodAtalho(at.dataset.at); return; }
     const c=ev.target.closest('.pd-chip[data-g]'); if(!c) return;
     const g=c.dataset.g, val=c.dataset.v;
+    if(g==='fonte'){ prodTogFonte(val==='atual'?'atual':+val); return; }
     const tog=(arr,x)=>{ const i=arr.indexOf(x); if(i>=0) arr.splice(i,1); else arr.push(x); };
     if(g==='pel') tog(F.pels,val); else if(g==='dow') tog(F.dow,+val); else if(g==='cat') tog(F.cats,val);
     else if(g==='tipoPel') F.tipoPel = F.tipoPel===val ? '' : val;
@@ -3012,10 +3018,11 @@ function prodSalvarVisao(){
   const v = prodVisoes().filter(x=>x.n!==n); v.push({n, F:JSON.parse(JSON.stringify(PROD.F))}); prodGravarVisoes(v); prodMontar(true);
 }
 function prodRemoverVisao(n){ prodGravarVisoes(prodVisoes().filter(x=>x.n!==n)); prodMontar(true); }
-function prodAplicarVisao(n){ const v=prodVisoes().find(x=>x.n===n); if(!v) return; PROD.F=Object.assign({}, PROD.F, JSON.parse(JSON.stringify(v.F))); prodMontar(true); }
+async function prodAplicarVisao(n){ const v=prodVisoes().find(x=>x.n===n); if(!v) return; PROD.F=Object.assign({}, PROD.F, JSON.parse(JSON.stringify(v.F))); PROD.F.fontes=(PROD.F.fontes||['atual']).filter(x=>x==='atual'||PROD.fontes.some(f=>f.id===x)); if(!PROD.F.fontes.length) PROD.F.fontes=['atual']; try{ await prodGarantirLinhas(); }catch(e){} prodRecompor(); prodMontar(true); }
 
 function prodDescFiltros(){
   const F=PROD.F; const p=[];
+  p.push('Fontes: '+prodNomesFontes().join(' + '));
   if(F.mes) p.push('Mês: '+prodMesNome(F.mes)); else if(F.de||F.ate) p.push('Período: '+(F.de?prodDataBR(F.de):'início')+' a '+(F.ate?prodDataBR(F.ate):'hoje')); else p.push('Período: todo o histórico');
   if(F.pels.length) p.push('Pelotão: '+F.pels.join(', ')); if(F.tipoPel) p.push(F.tipoPel==='GER'?'Só GER':'Só CHOQUE/MGER');
   if(F.dow.length) p.push('Dias: '+F.dow.map(i=>PROD_DOW[i].slice(0,3)).join('/'));
@@ -3041,12 +3048,13 @@ function prodAtualizar(){
   const delta=(k)=>{ if(!prev) return ''; const a=s[k], b=prev[k]; if(b===0&&a===0) return '<div class="dl pd-eq">= período anterior</div>';
     if(b===0) return '<div class="dl pd-up">▲ novo (anterior: 0)</div>';
     const p=(a-b)/b*100; const c=p>0.5?'pd-up':p<-0.5?'pd-dn':'pd-eq'; return `<div class="dl ${c}">${p>0.5?'▲':p<-0.5?'▼':'='} ${Math.abs(p).toLocaleString('pt-BR',{maximumFractionDigits:0})}% vs. ${prodDataBR(C.prevP.de).slice(0,5)}–${prodDataBR(C.prevP.ate).slice(0,5)}</div>`; };
-  const kpis=PROD_KPIS.map(k=>{const m=PROD_MK[k]; return `<div class="pd-kpi ${F.metrica===k?'sel':''}" data-km="${k}" title="Clique para analisar esta métrica nos gráficos"><div class="n">${prodNum(s[k],m.f)}</div><div class="l">${esc(m.l)}</div>${delta(k)}</div>`;}).join('');
+  const kpis=PROD_KPIS.map(k=>{const m=PROD_MK[k]; return `<div class="pd-kpi ${F.metrica===k?'sel':''}" data-km="${k}" title="Clique para analisar esta métrica nos gráficos"><div class="n">${prodTemAlg(rows,k)?prodNum(s[k],m.f):'<span style="color:#aaa" title="A(s) fonte(s) selecionada(s) não têm esta coluna">n/d</span>'}</div><div class="l">${esc(m.l)}</div>${prodTemAlg(rows,k)?delta(k):''}</div>`;}).join('');
   const nAlert = rows.filter(r=>r.flags.length).length;
   out.innerHTML = `
    <div style="font-size:12px;color:#666;margin-bottom:8px"><b>${rows.length}</b> de ${PROD.linhas.length} registros · ${esc(prodDescFiltros())}${PROD.C.prevP?` · comparando com ${prodDataBR(C.prevP.de)}–${prodDataBR(C.prevP.ate)}`:' · (escolha De/Até ou um atalho para comparar com o período anterior)'}</div>
    ${prodAvisoQual(rows)}
    <div class="pd-kpis">${kpis}</div>
+   ${prodBoxComparativo(rows)}
    <div class="pd-fil" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
      <div style="min-width:260px;flex:1"><label>Métrica nos gráficos</label><select id="pg-met">${['Tráfico','Drogas','Dinheiro','Armas','Violentos','Veículos','Outros','Derivadas'].map(g=>`<optgroup label="${g}">${PROD_MET.filter(m=>m.g===g).map(m=>`<option value="${m.k}" ${F.metrica===m.k?'selected':''}>${esc(m.l)}</option>`).join('')}</optgroup>`).join('')}</select></div>
      <div><label>Agrupar por</label><select id="pg-gran"><option value="dia" ${F.gran==='dia'?'selected':''}>Dia</option><option value="semana" ${F.gran==='semana'?'selected':''}>Semana</option><option value="mes" ${F.gran==='mes'?'selected':''}>Mês</option></select></div>
@@ -3184,7 +3192,7 @@ function prodDetalhe(){
   el.innerHTML=`<div class="pd-tb"><table><thead><tr>${PROD_DET.map(([kk,l])=>`<th data-o="${kk}" class="${kk==='data'||kk==='pel'?'':'n'}">${l}${PROD.ord.k===kk?(PROD.ord.d>0?' ▲':' ▼'):''}</th>`).join('')}<th>Obs.</th></tr></thead><tbody>
    ${pg.map(r=>`<tr title="${esc(r.flags.join(' · '))}"><td style="white-space:nowrap">${prodDataBR(r.data)}</td><td style="white-space:nowrap">${esc(r.pel)}</td>
      ${['t','at','mi','dro','kgt','din','ar','mu','fg','cv','vap','vr'].map(kk=>{const v=prodVal(r,kk);return `<td class="n" style="${v?'':'color:#ccc'}">${v?prodNum(v,kk==='din'?'r':'n').replace(' kg',''):'–'}</td>`;}).join('')}
-     <td class="n">${r.id}</td><td style="font-size:11px;max-width:260px">${r.flags.length?'<span style="color:#a4202a">⚠ '+esc(r.flags.join('; '))+'</span> ':''}${esc([r.outros,r.calibres&&'cal.: '+r.calibres].filter(Boolean).join(' | '))}</td></tr>`).join('')||'<tr><td colspan="16" style="color:#888">Sem registros.</td></tr>'}
+     <td class="n" title="${esc(prodNomeFonte(r._f))}">${r._f&&r._f!=='atual'?'<span style="color:#888;font-size:10px">'+esc(prodNomeFonte(r._f).slice(0,14))+'</span> ':''}${r.id}</td><td style="font-size:11px;max-width:260px">${r.flags.length?'<span style="color:#a4202a">⚠ '+esc(r.flags.join('; '))+'</span> ':''}${esc([r.outros,r.calibres&&'cal.: '+r.calibres].filter(Boolean).join(' | '))}</td></tr>`).join('')||'<tr><td colspan="16" style="color:#888">Sem registros.</td></tr>'}
    </tbody></table></div>
    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario pd-sm" id="pd-ant" ${PROD.pag<=0?'disabled':''}>‹ Anterior</button> Página ${PROD.pag+1} de ${np} <button class="btn secundario pd-sm" id="pd-prox" ${PROD.pag>=np-1?'disabled':''}>Próxima ›</button></div>`;
   el.querySelectorAll('th[data-o]').forEach(th=>th.onclick=()=>{ const kk=th.dataset.o; PROD.ord = PROD.ord.k===kk ? {k:kk,d:-PROD.ord.d} : {k:kk,d:(kk==='pel'?1:-1)}; prodDetalhe(); });
@@ -3199,6 +3207,9 @@ function prodQualidade(){
     h += cf.ok ? '<div class="pd-ok">✅ A soma de todas as linhas confere com a linha “TOTAL” da planilha.</div>'
       : `<div class="pd-warn">A linha “TOTAL” da planilha difere da soma dos registros em: ${ks.map(k=>`<b>${esc((PROD_MK[k]||{l:k}).l)}</b> (planilha ${prodNum(cf.diferencas[k].plan,(PROD_MK[k]||{}).f)} × registros ${prodNum(cf.diferencas[k].lido,(PROD_MK[k]||{}).f)})`).join('; ')}. Costuma ocorrer quando a fórmula do total não cobre linhas novas ou há texto em células numéricas. Os números deste painel usam a soma dos registros.</div>`;
   }
+  PROD.F.fontes.filter(x=>x!=='atual').forEach(id=>{ const f=PROD.fontes.find(z=>z.id===id); const c=f&&f.avisos&&f.avisos.conferencia; if(!c) return; const ks=Object.keys(c.diferencas||{});
+    h += c.ok ? `<div class="pd-ok">✅ ${esc(f.nome)}: a soma das linhas confere com a linha “TOTAL” dessa planilha.</div>` : `<div class="pd-warn"><b>${esc(f.nome)}</b>: a linha “TOTAL” dessa planilha difere da soma dos registros em ${ks.map(k=>`<b>${esc((PROD_MK[k]||{l:k}).l)}</b> (planilha ${prodNum(c.diferencas[k].plan,(PROD_MK[k]||{}).f)} × registros ${prodNum(c.diferencas[k].lido,(PROD_MK[k]||{}).f)})`).join('; ')}. O sistema usa as linhas individuais.</div>`; });
+  if(PROD.dupX) h += `<div class="pd-warn">ℹ️ ${PROD.dupX} registro${PROD.dupX>1?'s':''} de planilha${PROD.dupX>1?'s':''} histórica${PROD.dupX>1?'s':''} já constava${PROD.dupX>1?'m':''} em outra fonte selecionada e ${PROD.dupX>1?'foram desconsiderados':'foi desconsiderado'} para não contar duas vezes.</div>`;
   h += `<p style="font-size:12px;color:#666;margin:0 0 8px">${all.length} registros lidos · ${all.filter(r=>r.vazio).length} sem nenhum quantitativo · ${al.length} com alerta${all.some(r=>!r.data)?' · <b>'+all.filter(r=>!r.data).length+' sem data (fora dos filtros e gráficos)</b>':''}.</p>`;
   if(al.length) h += `<div class="pd-tb" style="max-height:260px"><table><thead><tr><th>Linha</th><th>Data fato</th><th>Pelotão</th><th>Alerta</th></tr></thead><tbody>${al.map(r=>`<tr><td>${r.id}</td><td>${prodDataBR(r.data)}</td><td>${esc(r.pel||'—')}</td><td>${esc(r.flags.join('; '))}</td></tr>`).join('')}</tbody></table></div>`;
   return h+'<p style="font-size:11px;color:#888;margin:8px 0 0">“Linha” = número da linha na planilha. Correções devem ser feitas na própria planilha: o sistema se atualiza sozinho.</p></div>';
@@ -3232,8 +3243,8 @@ function prodWhats(){
 function prodCsv(){
   const rows=(PROD.C?PROD.C.rows:[]); const cols=PROD_MET.filter(m=>!m.d||m.k==='dro'||m.k==='kgt'||m.k==='pre');
   const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const head=['Linha planilha','Data do fato','Envio','Hora envio','Pelotão',...cols.map(m=>m.l),'Outros entorpecentes','Calibres','Alertas'];
-  const lin=rows.map(r=>[r.id,prodDataBR(r.data),prodDataBR(r.envio),r.hora,r.pel,...cols.map(m=>String(prodVal(r,m.k)).replace('.',',')),r.outros,r.calibres,r.flags.join('; ')].map(q).join(';'));
+  const head=['Fonte','Linha planilha','Data do fato','Envio','Hora envio','Pelotão',...cols.map(m=>m.l),'Outros entorpecentes','Calibres','Alertas'];
+  const lin=rows.map(r=>[prodNomeFonte(r._f),r.id,prodDataBR(r.data),prodDataBR(r.envio),r.hora,r.pel,...cols.map(m=>String(prodVal(r,m.k)).replace('.',',')),r.outros,r.calibres,r.flags.join('; ')].map(q).join(';'));
   const blob=new Blob(['﻿'+head.map(q).join(';')+'\n'+lin.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='produtividade-'+prodIso(new Date())+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -3255,6 +3266,187 @@ function prodRelatorio(){
   document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
 }
 function prodFecharRel(){ const ov=document.getElementById('prod-overlay'); if(ov) ov.remove(); printPagina(null); }
+
+
+// ================= FONTES HISTORICAS =================
+const PROD_BASE_KEYS=['t','at','mi','cpg','cpp','cb','cpap','crp','crb','mb','mt','mbk','fg','ar','mu','au','cv','apv','vap','vr','avr','din'];
+const PROD_COMPS={coc:['cpg','cpp','cpap'],dro:['cpg','cpp','cpap','crp','mb','mt'],kgt:['cb','crb','mbk'],pre:['at','au','apv','avr']};
+function prodNomeFonte(id){ if(!id||id==='atual') return 'Planilha atual'; const f=PROD.fontes.find(x=>x.id===id); return f?f.nome:'Fonte '+id; }
+function prodNomesFontes(){ return (PROD.F.fontes||['atual']).map(prodNomeFonte); }
+// uma linha "tem" a metrica quando a planilha de origem possui a coluna
+function prodTem(r,k){ if(k==='reg') return true; if(PROD_COMPS[k]) return PROD_COMPS[k].some(c=>prodTem(r,c)); return !r._tem || r._tem.has(k); }
+function prodTemAlg(rows,k){ if(!rows.length) return true; return rows.some(r=>prodTem(r,k)); }
+async function prodCarregarFontes(){
+  const d=await apiProd({op:'fontesLista'}); PROD.fontes=d.fontes||[]; PROD.podeEditarFontes=!!d.podeEditar;
+  const F=PROD.F; F.fontes=(F.fontes||['atual']).filter(x=>x==='atual'||PROD.fontes.some(f=>f.id===x)); if(!F.fontes.length) F.fontes=['atual'];
+  await prodGarantirLinhas();
+}
+async function prodGarantirLinhas(){ for(const id of PROD.F.fontes){ if(id!=='atual' && !PROD.fr[id]){ const d=await apiProd({op:'fonteLinhas',id}); PROD.fr[id]=d.linhas||[]; } } }
+function prodIguais(a,b){
+  if(a.data!==b.data || (a.pel||'')!==(b.pel||'')) return false;
+  let n=0; for(const k of PROD_BASE_KEYS){ if(a._tem.has(k)&&b._tem.has(k)){ if(Math.abs((a[k]||0)-(b[k]||0))>0.0005) return false; if(a[k]) n++; } }
+  return n>0;
+}
+function prodRecompor(){
+  const F=PROD.F; const sel=(F.fontes&&F.fontes.length)?F.fontes:['atual'];
+  const ordem=['atual',...PROD.fontes.map(f=>f.id)].filter(x=>sel.includes(x));
+  const out=[]; const idx=new Map(); let dups=0;
+  ordem.forEach(fid=>{
+    const f=fid==='atual'?null:PROD.fontes.find(x=>x.id===fid); const tem=new Set(f?(f.tem||[]):PROD_BASE_KEYS);
+    const rows=fid==='atual'?PROD.atualRows:(PROD.fr[fid]||[]);
+    rows.forEach(r0=>{
+      let r=r0;
+      if(fid==='atual'){ r._f='atual'; r._tem=tem; }
+      else { r=Object.assign({},r0); PROD_BASE_KEYS.forEach(k=>{ if(r[k]===undefined) r[k]=0; }); r._f=fid; r._tem=tem; r.flags=r.flags||[]; }
+      if(r.data && !r.vazio){
+        const ch=(r.pel||'')+'|'+r.data; const cands=idx.get(ch)||[];
+        if(cands.some(c=>c._f!==r._f && prodIguais(c,r))){ dups++; return; }
+        cands.push(r); idx.set(ch,cands);
+      }
+      out.push(r);
+    });
+  });
+  PROD.linhas=out; PROD.dupX=dups;
+}
+async function prodTogFonte(id){
+  const F=PROD.F; const a=F.fontes.slice(); const i=a.indexOf(id);
+  if(i>=0){ if(a.length===1){ prodStatus('Mantenha ao menos uma fonte selecionada.'); return; } a.splice(i,1); } else a.push(id);
+  const ant=F.fontes; F.fontes=a;
+  try{ prodStatus('⏳ Carregando fonte…'); await prodGarantirLinhas(); }catch(e){ F.fontes=ant; prodStatus('⚠️ '+e.message); return; }
+  prodRecompor(); PROD.pag=0; prodMontar(true);
+}
+// ---- caixa comparativa (por fonte, por ano ou por mes)
+function prodBoxComparativo(rows){
+  const F=PROD.F; const nF=new Set(rows.map(r=>r._f)).size; const anos=new Set(rows.filter(r=>r.data).map(r=>r.data.slice(0,4))).size;
+  if(nF<2 && anos<2) return '';
+  const g=F.cmpGrupo || (nF>1?'fonte':'ano');
+  return `<div class="pd-box" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">↔️ Comparativo</h3>
+    <div style="display:flex;gap:8px;align-items:center;font-size:12px"><label style="margin:0">Comparar por</label><select id="pc-grupo" style="width:auto"><option value="fonte" ${g==='fonte'?'selected':''}>Fonte (planilha)</option><option value="ano" ${g==='ano'?'selected':''}>Ano</option><option value="mes" ${g==='mes'?'selected':''}>Mês</option></select></div></div>
+    <p style="font-size:12px;color:#666;margin:6px 0 8px">Indicadores que existem nos dois lados são comparados; onde a planilha não tem a coluna aparece “—” (não é zero, é “sem lançamento”). Respeita os filtros acima.</p>
+    <div class="pd-tb" style="max-height:420px">${prodTabelaComparativa(rows,g)}</div></div>`;
+}
+function prodTabelaComparativa(rows,g){
+  const chave=r=>g==='fonte'?String(r._f):g==='ano'?(r.data||'').slice(0,4):(r.data||'').slice(0,7);
+  const rot=c=>g==='fonte'?prodNomeFonte(c==='atual'?'atual':+c):g==='mes'?prodMesNome(c):c;
+  const grp={}; rows.forEach(r=>{ if(!r.data) return; (grp[chave(r)]=grp[chave(r)]||[]).push(r); });
+  let cols=Object.keys(grp); if(g==='fonte'){ const ord=['atual',...PROD.fontes.map(f=>String(f.id))]; cols.sort((a,b)=>ord.indexOf(a)-ord.indexOf(b)); } else cols.sort();
+  if(cols.length<2) return '<p style="color:#888">Selecione mais de um '+(g==='fonte'?'fonte':g==='ano'?'ano':'mês')+' no período para comparar.</p>';
+  const ks=['reg','t','at','mi','dro','coc','crp','mb','kgt','din','fg','ar','mu','au','cv','apv','vap','vr','avr','pre'];
+  let parcial=false;
+  const cel=(c,k)=>{ const rs=grp[c]; if(!prodTemAlg(rs,k)) return null; const v=rs.reduce((a,r)=>a+prodVal(r,k),0);
+    let p=false; if(PROD_COMPS[k]) p=PROD_COMPS[k].some(x=>!prodTemAlg(rs,x)); if(p) parcial=true; return {v,p}; };
+  const linhas=ks.map(k=>{ const m=PROD_MK[k]; const vs=cols.map(c=>cel(c,k)); if(vs.every(x=>x===null)) return '';
+    const ult=vs[vs.length-1], pen=vs[vs.length-2]; let var_='—';
+    if(ult&&pen&&!ult.p&&!pen.p){ if(pen.v===0) var_=ult.v===0?'=':'novo'; else { const pc=(ult.v-pen.v)/pen.v*100; var_=`<span class="${pc>0.5?'pd-up':pc<-0.5?'pd-dn':'pd-eq'}">${pc>0.5?'▲':pc<-0.5?'▼':'='} ${Math.abs(pc).toLocaleString('pt-BR',{maximumFractionDigits:0})}%</span>`; } }
+    return `<tr><td>${esc(m.l)}</td>${vs.map(x=>x===null?'<td class="n" style="color:#bbb" title="Sem coluna/lançamento nesta fonte">—</td>':`<td class="n">${prodNum(x.v,m.f)}${x.p?' *':''}</td>`).join('')}<td class="n">${var_}</td></tr>`; }).join('');
+  return `<table><thead><tr><th>Indicador</th>${cols.map(c=>`<th class="n">${esc(rot(c))}</th>`).join('')}<th class="n">Var. (último × anterior)</th></tr></thead><tbody>${linhas}</tbody></table>${parcial?'<p style="font-size:11px;color:#888;margin:6px 0 0">* parcial: a fonte não tem todas as colunas que compõem este total.</p>':''}`;
+}
+document.addEventListener('change',e=>{ if(e.target&&e.target.id==='pc-grupo'){ PROD.F.cmpGrupo=e.target.value; prodAtualizar(); } });
+
+// ---- gerenciador de fontes
+function prodOv(html){
+  let ov=document.getElementById('prod-fontes'); if(!ov){ ov=document.createElement('div'); ov.id='prod-fontes'; ov.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.55);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px 8px'; document.body.appendChild(ov); }
+  ov.innerHTML=`<div style="background:#f6f3e8;border-radius:12px;padding:16px 18px;width:min(980px,98vw);box-shadow:0 10px 40px rgba(0,0,0,.4)">${html}</div>`; return ov;
+}
+function prodFontesFechar(){ const o=document.getElementById('prod-fontes'); if(o) o.remove(); }
+function prodToast(m,erro){ const st=document.getElementById('prod-status'); if(st){ st.innerHTML=`<b style="color:${erro?'#a4202a':'#33502f'}">${esc(m)}</b>`; } }
+function prodFontesAbrir(){
+  const ed=PROD.podeEditarFontes;
+  prodOv(`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">📚 Planilhas históricas</h3><button class="btn secundario pd-sm" id="pfo-x">✖ Fechar</button></div>
+   <p style="font-size:12.5px;color:#555;margin:8px 0">Inclua planilhas antigas (por link do Google Planilhas ou por arquivo .xlsx/.csv) para consultar com os mesmos filtros. As colunas iguais às da planilha atual são comparadas; as que a planilha antiga não tem ficam como “sem lançamento” (—), nunca como zero.</p>
+   <div class="pd-tb" style="max-height:340px"><table><thead><tr><th>Nome</th><th>Origem</th><th>Período</th><th class="n">Linhas</th><th class="n">Colunas</th><th>Ações</th></tr></thead><tbody>
+   ${PROD.fontes.map(f=>`<tr><td><b>${esc(f.nome)}</b></td><td>${f.tipo==='link'?'🔗 link':'📄 arquivo'}</td><td>${f.data_min?prodDataBR(f.data_min)+' a '+prodDataBR(f.data_max):'—'}</td><td class="n">${f.n}</td><td class="n" title="${esc((f.tem||[]).join(', '))}">${(f.tem||[]).length}/${PROD_BASE_KEYS.length}</td>
+     <td style="white-space:nowrap">${ed?`<button class="btn secundario pd-sm" data-ren="${f.id}">Renomear</button> <button class="btn secundario pd-sm" data-map="${f.id}">Colunas</button> ${f.tipo==='link'?`<button class="btn secundario pd-sm" data-atu="${f.id}">↻ Atualizar</button> `:''}<button class="btn perigo pd-sm" data-del="${f.id}">Excluir</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" style="color:#888">Nenhuma planilha histórica cadastrada.</td></tr>'}
+   </tbody></table></div>
+   ${ed?'<div style="margin-top:10px"><button class="btn" id="pfo-add">＋ Adicionar planilha</button></div>':'<p style="font-size:12px;color:#888">Somente leitura (adicionar exige permissão de edição no P3).</p>'}
+   <div id="pfo-msg" style="font-size:12px;margin-top:8px"></div>`);
+  const msg=(t,e)=>{ const m=document.getElementById('pfo-msg'); if(m) m.innerHTML=`<span style="color:${e?'#a4202a':'#33502f'}">${esc(t)}</span>`; };
+  document.getElementById('pfo-x').onclick=prodFontesFechar;
+  const add=document.getElementById('pfo-add'); if(add) add.onclick=()=>prodFonteForm();
+  const ov=document.getElementById('prod-fontes');
+  ov.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ const id=+b.dataset.del; const f=PROD.fontes.find(x=>x.id===id); if(!confirm(`Excluir a planilha “${f.nome}” do sistema? (a planilha original não é afetada)`)) return;
+    try{ await apiProd({op:'fonteExcluir',id}); delete PROD.fr[id]; PROD.fontes=PROD.fontes.filter(x=>x.id!==id); PROD.F.fontes=PROD.F.fontes.filter(x=>x!==id); if(!PROD.F.fontes.length) PROD.F.fontes=['atual']; prodRecompor(); prodMontar(true); prodFontesAbrir(); }catch(e){ msg(e.message,true); } });
+  ov.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{ const id=+b.dataset.ren; const f=PROD.fontes.find(x=>x.id===id); const n=prompt('Novo nome:',f.nome); if(!n) return;
+    try{ await apiProd({op:'fonteRenomear',id,nome:n}); f.nome=n; prodMontar(true); prodFontesAbrir(); }catch(e){ msg(e.message,true); } });
+  ov.querySelectorAll('[data-atu]').forEach(b=>b.onclick=async()=>{ const id=+b.dataset.atu; msg('Lendo a planilha…');
+    try{ const d=await apiProd({op:'fonteAtualizar',id}); const i=PROD.fontes.findIndex(x=>x.id===id); PROD.fontes[i]=d.fonte; delete PROD.fr[id]; await prodGarantirLinhas(); prodRecompor(); prodMontar(true); prodFontesAbrir(); setTimeout(()=>{ const m=document.getElementById('pfo-msg'); if(m) m.innerHTML='<span style="color:#33502f">Atualizada: '+d.fonte.n+' linhas.</span>'; },30); }catch(e){ msg(e.message,true); } });
+  ov.querySelectorAll('[data-map]').forEach(b=>b.onclick=async()=>{ const id=+b.dataset.map; const f=PROD.fontes.find(x=>x.id===id); msg('Carregando colunas…');
+    try{ const d=await apiProd({op:'fonteLer',id}); prodFonteMapa({id,nome:f.nome,tipo:f.tipo,url:f.url,headers:d.headers,mapa:d.mapa,amostra:d.amostra}); }catch(e){ msg(e.message,true); } });
+}
+let PFW=null; // dados do assistente
+function prodFonteForm(){
+  PFW={tipo:'arquivo',wb:null,csv:''};
+  prodOv(`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h3 style="margin:0">＋ Adicionar planilha histórica</h3><button class="btn secundario pd-sm" id="pfw-x">← Voltar</button></div>
+   <div class="pd-fil" style="margin-top:10px"><div class="lin"><div style="flex:1;min-width:240px"><label>Nome (ex.: “Produtividade 2025”)</label><input id="pfw-nome" placeholder="Produtividade 2025"></div></div>
+    <div class="lin"><div><label>Como enviar</label><label style="display:inline;margin-right:14px;font-size:13px"><input type="radio" name="pfw-t" value="arquivo" checked style="width:auto"> Arquivo (.xlsx / .csv)</label><label style="display:inline;font-size:13px"><input type="radio" name="pfw-t" value="link" style="width:auto"> Link do Google Planilhas</label></div></div>
+    <div class="lin" id="pfw-arq"><div style="flex:1"><label>Arquivo</label><input type="file" id="pfw-file" accept=".xlsx,.xls,.csv,.txt"></div><div id="pfw-abaw" style="display:none"><label>Aba</label><select id="pfw-aba"></select></div></div>
+    <div class="lin" id="pfw-lnk" style="display:none"><div style="flex:1"><label>Link (a planilha precisa estar compartilhada: “qualquer pessoa com o link – leitor”; se for outra aba, abra a aba e copie o link dela)</label><input id="pfw-url" placeholder="https://docs.google.com/spreadsheets/d/…"></div></div>
+    <div class="lin" style="margin-bottom:0"><button class="btn" id="pfw-ler">Ler planilha →</button><span id="pfw-m" style="font-size:12px"></span></div></div>`);
+  const m=t=>{ document.getElementById('pfw-m').innerHTML=t; };
+  document.getElementById('pfw-x').onclick=prodFontesAbrir;
+  document.querySelectorAll('input[name=pfw-t]').forEach(r=>r.onchange=()=>{ PFW.tipo=r.value; document.getElementById('pfw-arq').style.display=r.value==='arquivo'?'':'none'; document.getElementById('pfw-lnk').style.display=r.value==='link'?'':'none'; });
+  document.getElementById('pfw-file').onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return; PFW.wb=null; PFW.csv=''; document.getElementById('pfw-abaw').style.display='none';
+    if(!document.getElementById('pfw-nome').value) document.getElementById('pfw-nome').value=f.name.replace(/\.[^.]+$/,'').replace(/^[0-9a-f]{8}[-_ ]/i,'').replace(/[_-]+/g,' ').slice(0,60);
+    try{
+      const buf=await f.arrayBuffer();
+      if(/\.(xlsx|xls)$/i.test(f.name)){
+        m('⏳ Carregando leitor de Excel…'); if(!(await prodLibXlsx())){ m('<span style="color:#a4202a">Não consegui carregar o leitor de Excel (rede bloqueou o CDN). Salve a planilha como .csv e envie de novo.</span>'); return; }
+        PFW.wb=XLSX.read(buf,{type:'array',cellDates:true});
+        const abas=PFW.wb.SheetNames.filter(n=>{ const ws=PFW.wb.Sheets[n]; return ws&&ws['!ref']&&XLSX.utils.sheet_to_json(ws,{header:1}).length>=2; });
+        if(!abas.length){ m('<span style="color:#a4202a">Nenhuma aba com dados.</span>'); return; }
+        const sel=document.getElementById('pfw-aba'); sel.innerHTML=abas.map(n=>`<option>${esc(n)}</option>`).join(''); document.getElementById('pfw-abaw').style.display=abas.length>1?'':'none'; m(abas.length>1?'Escolha a aba com as respostas (a primeira costuma ser a certa).':'');
+      } else {
+        try{ PFW.csv=new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(_){ PFW.csv=new TextDecoder('windows-1252').decode(buf); }
+        m('');
+      }
+    }catch(err){ m('<span style="color:#a4202a">'+esc(err.message)+'</span>'); }
+  };
+  document.getElementById('pfw-ler').onclick=async()=>{
+    const nome=document.getElementById('pfw-nome').value.trim(); if(!nome){ m('<span style="color:#a4202a">Dê um nome.</span>'); return; }
+    const p={op:'fonteLer'}; let url=null;
+    if(PFW.tipo==='link'){ url=document.getElementById('pfw-url').value.trim(); if(!url){ m('<span style="color:#a4202a">Cole o link.</span>'); return; } p.url=url; }
+    else { if(PFW.wb) PFW.csv=prodXlsxParaCsv(PFW.wb,document.getElementById('pfw-aba').value); if(!PFW.csv){ m('<span style="color:#a4202a">Escolha o arquivo.</span>'); return; } p.csv=PFW.csv; }
+    m('⏳ Lendo…');
+    try{ const d=await apiProd(p); prodFonteMapa({nome,tipo:PFW.tipo,url,csv:p.csv,headers:d.headers,mapa:d.mapa,amostra:d.amostra,nLinhas:d.nLinhas}); }catch(err){ m('<span style="color:#a4202a">'+esc(err.message)+'</span>'); }
+  };
+}
+function prodLibXlsx(){
+  return new Promise(res=>{ if(window.XLSX) return res(true); const u=['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js']; let i=0;
+    const t=()=>{ if(i>=u.length) return res(false); const s=document.createElement('script'); s.src=u[i++]; s.onload=()=>res(!!window.XLSX); s.onerror=t; document.head.appendChild(s); }; t(); });
+}
+function prodXlsxParaCsv(wb,aba){
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[aba],{header:1,raw:true,defval:''}); const pad=n=>String(n).padStart(2,'0');
+  const cel=v=>{ let t; if(v instanceof Date){ const d=new Date(Math.round(v.getTime()/60000)*60000); t=pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes()); } else t=String(v==null?'':v); return /[",\n\r]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  return rows.map(r=>r.map(cel).join(',')).join('\n');
+}
+const PROD_CAMPOS_MAPA=()=>[['data','Data do fato *'],['carimbo','Carimbo de data/hora'],['pel','Pelotão'],...PROD_MET.filter(m=>!m.d).map(m=>[m.k,m.l]),['outros','Outros entorpecentes (texto)'],['calibres','Calibres (texto)']];
+function prodFonteMapa(W){
+  PFW=W; const H=W.headers;
+  const opt=i=>`<option value="${i}">${i+1}. ${esc(H[i]||'(sem título)').slice(0,70)}</option>`;
+  prodOv(`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h3 style="margin:0">🧭 Colunas de “${esc(W.nome)}”</h3><button class="btn secundario pd-sm" id="pfm-x">← Voltar</button></div>
+   <p style="font-size:12.5px;color:#555;margin:8px 0">O sistema reconheceu as colunas abaixo pelo título. Confira e ajuste se precisar. Quem ficar em “— sem esta coluna —” aparece como <b>sem lançamento</b> nessa planilha (não vira zero).</p>
+   <div class="pd-tb" style="max-height:430px"><table><thead><tr><th>Indicador do sistema</th><th>Coluna da planilha</th><th>1ª linha de exemplo</th></tr></thead><tbody>
+   ${PROD_CAMPOS_MAPA().map(([k,l])=>`<tr><td>${esc(l)}</td><td><select data-k="${k}" style="width:100%"><option value="">— sem esta coluna —</option>${H.map((_,i)=>opt(i)).join('')}</select></td><td data-ex="${k}" style="font-size:11px;color:#555;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></td></tr>`).join('')}
+   </tbody></table></div>
+   <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="pfm-ok">💾 Salvar planilha</button><span id="pfm-m" style="font-size:12px"></span></div>`);
+  const ov=document.getElementById('prod-fontes');
+  const ex=(k)=>{ const s=ov.querySelector(`select[data-k="${k}"]`); const td=ov.querySelector(`[data-ex="${k}"]`); const i=s.value; td.textContent=i===''?'':String((W.amostra&&W.amostra[0]&&W.amostra[0][+i])??''); };
+  ov.querySelectorAll('select[data-k]').forEach(s=>{ const v=W.mapa[s.dataset.k]; if(v!==undefined) s.value=String(v); s.onchange=()=>ex(s.dataset.k); ex(s.dataset.k); });
+  document.getElementById('pfm-x').onclick=prodFontesAbrir;
+  document.getElementById('pfm-ok').onclick=async()=>{
+    const mapa={}; ov.querySelectorAll('select[data-k]').forEach(s=>{ if(s.value!=='') mapa[s.dataset.k]=+s.value; });
+    const m=document.getElementById('pfm-m'); if(mapa.data===undefined && mapa.carimbo===undefined){ m.innerHTML='<span style="color:#a4202a">Indique a coluna da data do fato.</span>'; return; }
+    m.textContent='⏳ Salvando e processando as linhas…'; document.getElementById('pfm-ok').disabled=true;
+    try{
+      const p={op:'fonteSalvar',nome:W.nome,mapa}; if(W.id) p.id=W.id; if(W.csv) p.csv=W.csv; if(W.url) p.url=W.url;
+      const d=await apiProd(p); const i=PROD.fontes.findIndex(x=>x.id===d.fonte.id); if(i>=0) PROD.fontes[i]=d.fonte; else PROD.fontes.push(d.fonte);
+      delete PROD.fr[d.fonte.id]; if(PROD.F.fontes.includes(d.fonte.id)){ await prodGarantirLinhas(); prodRecompor(); }
+      prodMontar(true); prodFontesAbrir();
+      const av=d.fonte.avisos||{}; const c=av.conferencia; setTimeout(()=>{ const mm=document.getElementById('pfo-msg'); if(mm) mm.innerHTML=`<span style="color:#33502f">✅ “${esc(d.fonte.nome)}” salva: ${d.fonte.n} linhas, ${prodDataBR(d.fonte.data_min)} a ${prodDataBR(d.fonte.data_max)}, ${(d.fonte.tem||[]).length} indicadores.</span>${c&&!c.ok?' <span style="color:#8a5a00">A linha TOTAL da planilha difere da soma das linhas em '+Object.keys(c.diferencas).length+' indicador(es) — veja “Qualidade dos dados”.</span>':''} Marque a fonte nos filtros para consultar.`; },30);
+    }catch(e){ document.getElementById('pfm-ok').disabled=false; m.innerHTML='<span style="color:#a4202a">'+esc(e.message)+'</span>'; }
+  };
+}
 
 // ================= ABA INFRATORES (P2) =================
 const INF_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-infratores";
