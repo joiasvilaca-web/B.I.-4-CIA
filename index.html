@@ -3554,17 +3554,17 @@ function gdoRange(ini,fim){ return {de:ini+'-01', ate:prodIso(new Date(+fim.slic
 function gdoMesesLista(ini,fim){ const o=[]; let m=ini; while(m<=fim && o.length<24){ o.push(m); m=gdoMesAdd(m,1); } return o; }
 function gdoFmt(v,f){ if(f==='r') return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}); return v.toLocaleString('pt-BR',{maximumFractionDigits:3}); }
 function gdoRotPer(ini,fim){ const nm=m=>GDO_MESES[+m.slice(5,7)-1]; const y=m=>m.slice(2,4); return ini===fim ? nm(fim)+'/'+y(fim) : nm(ini).slice(0,3)+'/'+y(ini)+' a '+nm(fim).slice(0,3)+'/'+y(fim); }
-function gdoCalc(ini,fim,pels){
-  const rowsPer=(a,b)=>{ const r=gdoRange(a,b); return prodFiltrar(Object.assign(prodBase(pels),{de:r.de,ate:r.ate})); };
+function gdoCalc(ini,fim,fil){
+  const rowsPer=(a,b)=>{ const r=gdoRange(a,b); return prodFiltrar(Object.assign({},fil,{de:r.de,ate:r.ate})); };
   const meses=gdoMesesLista(ini,fim);
   const porMes={}; meses.forEach(m=>{ const rs=rowsPer(m,m); porMes[m]={rows:rs,s:prodSoma(rs)}; });
   const rs=rowsPer(ini,fim); return {meses,porMes,rows:rs,s:prodSoma(rs)};
 }
 function gdoCel(blk,k){ if(!blk.rows.length||!prodTemAlg(blk.rows,k)) return null; return blk.s[k]; }
 function gdoVar(a,b){ if(a===null||b===null) return {t:'—',c:''}; if(b===0) return a===0?{t:'0,00%',c:'eq'}:{t:'novo',c:'up'}; const p=(a-b)/b*100; return {t:(p>0?'+':'')+p.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%',c:p>0.005?'up':p<-0.005?'dn':'eq'}; }
-function gdoTabela(D,vars){
+function gdoTabela(D,vars,ind){
   const th=D.meses.map(m=>`<th>${GDO_MESES[+m.slice(5,7)-1].slice(0,3)}</th>`).join('');
-  const lin=GDO_LIN.map(([k,l])=>{ const f=PROD_MK[k].f; const cs=D.meses.map(m=>gdoCel(D.porMes[m],k)); const tot=gdoCel(D,k);
+  const lin=gdoOrd(ind).map(k=>{ const l=gdoLab(k); const f=PROD_MK[k].f; const cs=D.meses.map(m=>gdoCel(D.porMes[m],k)); const tot=gdoCel(D,k);
     const vc=(vars||[]).map(v=>{ const x=gdoVar(v.a(k),v.b(k)); return `<td class="v ${x.c}">${x.t}</td>`; }).join('');
     return `<tr><td class="l">${esc(l)}</td>${cs.map(c=>`<td>${c===null?'<span class="nd">—</span>':gdoFmt(c,f)}</td>`).join('')}<td class="t">${tot===null?'—':gdoFmt(tot,f)}</td>${vc}</tr>`; }).join('');
   return `<table class="gdo-t"><thead><tr><th class="l">OCORRÊNCIAS</th>${th}<th class="t">TOTAL</th>${(vars||[]).map(v=>`<th class="v">${esc(v.h)}</th>`).join('')}</tr></thead><tbody>${lin}</tbody></table>`;
@@ -3602,73 +3602,176 @@ function gdoCss(){
   .gdo-capa .pm{position:absolute;right:22mm;bottom:15mm;font-size:9pt;letter-spacing:2pt;color:#cdbf8a;font-weight:bold}
   .gdo-gr{display:grid;grid-template-columns:1fr 1fr;gap:5mm;padding:4mm 12mm}
   .gdo-gr div{background:#fff;border:.3mm solid #b9ad84;padding:2mm 3mm;border-radius:2mm}.gdo-gr b{font-size:10pt;color:#4a3f22}.gdo-gr img{width:100%;display:block}
+  .gdo-kp{display:grid;grid-template-columns:repeat(4,1fr);gap:5mm;padding:4mm 2mm}.gdo-kp .kc{background:#fff;border:.3mm solid #b9ad84;border-left:2mm solid #9f8b5d;border-radius:2mm;padding:3mm 4mm}.gdo-kp .kc span{display:block;font-size:9.5pt;color:#555}.gdo-kp .kc b{display:block;font-size:22pt;margin:1mm 0;color:#1b1b1b}.gdo-kp .kc i{font-style:normal;font-size:9pt;font-weight:bold}.gdo-kp i.up{color:#14532d}.gdo-kp i.dn{color:#8a1621}.gdo-kp i.eq{color:#666}
   @media print{ .gdo-pg{zoom:1 !important;margin:0 !important;box-shadow:none !important} }`;
   document.head.appendChild(s);
 }
-function gdoAbrir(){} 
+
+// ---- configuracao livre do corpo do GDO (blocos)
+const GDO_TIPOS={tabela:'📋 Quadro mensal de indicadores',kpis:'🔢 Resumo (cartões)',grafico:'📈 Gráficos',pelotao:'🪖 Quadro por pelotão',dow:'📅 Por dia da semana',ranking:'🏆 Maiores registros',texto:'📝 Texto livre',manual:'✍️ Tabela manual (digitar dados)'};
+const GDO_CATS={trafico:'Tráfico',arma:'Armas',violento:'Crime violento',veic:'Veículos',dinheiro:'Dinheiro',forag:'Foragidos',menor:'Menor infrator'};
+const GDO_IND_DEF={tabela:null,pelotao:['t','at','mi','dro','kgt','din','ar','au','cv','apv','vap','vr'],grafico:['t'],kpis:['t','at','dro','din','ar','au','cv','vap'],dow:['t','at','dro','din','ar'],ranking:['din']};
+const GDO_CURTO={t:'Tráfico',at:'Autores tráfico',mi:'Infratores',dro:'Drogas (porções)',kgt:'Barras (kg)',din:'Dinheiro',ar:'Armas',au:'Autor arma',cv:'Crime violento',apv:'Autor c. violento',vap:'Veíc. apreendidos',vr:'Veíc. recuperados'};
+function gdoOrd(ind){ const base=GDO_LIN.map(x=>x[0]).concat(PROD_MET.map(m=>m.k).filter(k=>!GDO_LIN.some(x=>x[0]===k))); return base.filter(k=>ind.includes(k)); }
+function gdoLab(k){ const x=GDO_LIN.find(a=>a[0]===k); return x?x[1]:PROD_MK[k].l; }
+function gdoInd(b){ return b.ind||(b.t==='tabela'?GDO_LIN.map(x=>x[0]):GDO_IND_DEF[b.t]||[]); }
+function gdoPadrao(ano,ult){ return {ano,mi:1,mf:ult,pels:[],tipoPel:'',dow:[],cats:[],droga:'',minDin:'',dup:'incluir',alerta:'todos',blocos:[
+  {t:'tabela',tit:'Produtividade de iniciativa (acumulado {ano})',per:'ant',v:[]},
+  {t:'tabela',tit:'Produtividade de iniciativa (acumulado {ano})',per:'gdo',v:['ant']},
+  {t:'pelotao',tit:'Produtividade por pelotão ({periodo})'},
+  {t:'grafico',tit:'Evolução mensal',ind:['t','dro','din','ar'],gran:'mes',tipo:'bar',ant:true}]}; }
+function gdoSalvarCfg(){ try{ localStorage.setItem('bi4_gdo_cfg',JSON.stringify(PROD.GDO)); }catch(e){} }
+function gdoFil(G){ return Object.assign(prodBase(G.pels),{tipoPel:G.tipoPel,dow:G.dow,cats:G.cats,droga:G.droga,minDin:G.minDin,dup:G.dup,alerta:G.alerta}); }
+function gdoDescF(G){ const p=[]; if(G.pels.length) p.push('Pelotões: '+G.pels.join(', ')); if(G.tipoPel) p.push(G.tipoPel==='GER'?'Só GER':'Só CHOQUE/MGER'); if(G.dow.length) p.push('Dias: '+G.dow.map(i=>PROD_DOW[i].slice(0,3)).join('/')); if(G.cats.length) p.push('Com: '+G.cats.map(c=>GDO_CATS[c]).join(', ')); if(G.droga) p.push('Droga: '+G.droga); if(G.minDin) p.push('Dinheiro ≥ R$ '+G.minDin); if(G.dup!=='incluir') p.push('Duplicados: '+G.dup); if(G.alerta!=='todos') p.push('Alertas: '+G.alerta); return p.join(' · '); }
+
 function prodGdoAbrir(){
   const L=PROD.linhas.filter(r=>r.data); if(!L.length) return;
   const anos=[...new Set(L.map(r=>r.data.slice(0,4)))].sort(); const pels=[...new Set(L.map(r=>r.pel||'(sem pelotão)'))].sort();
-  if(!PROD.GDO){ const ay=anos[anos.length-1]; const ms=L.filter(r=>r.data.startsWith(ay)).map(r=>+r.data.slice(5,7)); const ult=Math.max(...ms);
-    PROD.GDO={ano:ay,mi:1,mf:ult,ant:true,mesAnt:false,perAnt:false,pel:true,graf:true,pels:[]}; }
-  const G=PROD.GDO; G.pels=G.pels.filter(p=>pels.includes(p)); if(!anos.includes(G.ano)) G.ano=anos[anos.length-1];
+  const meses=[...new Set(L.map(r=>r.data.slice(0,7)))].sort();
+  const ultMes=a=>Math.max(...L.filter(r=>r.data.startsWith(a)).map(r=>+r.data.slice(5,7)));
+  if(!PROD.GDO){ let c=null; try{ c=JSON.parse(localStorage.getItem('bi4_gdo_cfg')||'null'); }catch(e){}
+    PROD.GDO=(c&&Array.isArray(c.blocos)&&c.ano)?Object.assign(gdoPadrao(c.ano,12),c):gdoPadrao(anos[anos.length-1],ultMes(anos[anos.length-1])); }
+  const G=PROD.GDO; if(!anos.includes(G.ano)){ G.ano=anos[anos.length-1]; G.mi=1; G.mf=ultMes(G.ano); }
+  G.pels=G.pels.filter(p=>pels.includes(p));
+  const ov0=document.getElementById('prod-fontes'); const sc=ov0?ov0.scrollTop:0;
   const ini=G.ano+'-'+String(G.mi).padStart(2,'0'), fim=G.ano+'-'+String(G.mf).padStart(2,'0');
   const ms=GDO_MESES.map((n,i)=>`<option value="${i+1}">${n}</option>`).join('');
-  const cb=(id,v,t)=>`<label style="display:flex;gap:6px;align-items:center;margin:3px 0;cursor:pointer;font-size:13px"><input type="checkbox" id="${id}" style="width:auto" ${v?'checked':''}> ${t}</label>`;
-  prodOv(`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">📑 Gerar GDO – Gestão do Desempenho Operacional</h3><button class="btn secundario pd-sm" id="gdo-x">✖ Fechar</button></div>
-   <p style="font-size:12px;color:#555;margin:8px 0">Gera o PDF padrão (capa institucional + quadros), com os dados das fontes marcadas em “Fontes de dados”. Só o período muda.</p>
-   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div><label>Ano</label><select id="gdo-ano">${anos.map(a=>`<option ${a===G.ano?'selected':''}>${a}</option>`).join('')}</select></div>
+  const chip=(att,v,t,on)=>`<span class="pd-chip ${on?'on':''}" ${att}="${esc(v)}">${esc(t)}</span>`;
+  const cbx=(att,v,t)=>`<label style="display:flex;gap:6px;align-items:center;margin:2px 0;cursor:pointer;font-size:12.5px"><input type="checkbox" ${att} style="width:auto" ${v?'checked':''}> ${t}</label>`;
+  const sel=(att,val,opts)=>`<select ${att}>${opts.map(([v,t])=>`<option value="${v}" ${String(val)===String(v)?'selected':''}>${t}</option>`).join('')}</select>`;
+  const mesOpt=(val)=>meses.map(m=>`<option value="${m}" ${val===m?'selected':''}>${prodMesNome(m)}</option>`).join('');
+  const gr=['Tráfico','Drogas','Dinheiro','Armas','Violentos','Veículos','Outros','Derivadas'];
+  const indUI=(b,i)=>{ const cur=gdoInd(b); return `<div style="font-size:11.5px;margin-top:6px"><b>Indicadores</b> ${b.t==='ranking'?'':`<a href="#" data-ia="${i}" data-w="todos">todos</a> · <a href="#" data-ia="${i}" data-w="nenhum">nenhum</a>`}${gr.map(g=>`<div style="margin:3px 0"><b style="color:#666">${g}:</b> ${PROD_MET.filter(m=>m.g===g).map(m=>chip('data-bi="'+i+'" data-k',m.k,m.l,cur.includes(m.k))).join('')}</div>`).join('')}</div>`; };
+  const campo=(i,f,v,ph)=>`<input data-b="${i}" data-f="${f}" value="${esc(v||'')}" placeholder="${esc(ph||'')}" style="width:100%">`;
+  const blocoUI=(b,i)=>{ let h=`<div style="margin-bottom:6px"><label style="margin:0">Título da página</label>${campo(i,'tit',b.tit)}<div style="font-size:10.5px;color:#888">Pode usar {ano}, {anoAnt} e {periodo} (valem para o período da própria página).</div></div>`;
+    if(b.t==='tabela') h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><div><label>Período</label>${sel('data-b="'+i+'" data-f="per"',b.per||'gdo',[['gdo','Período do GDO'],['ant','Mesmo período do ano anterior'],['custom','Meses personalizados']])}</div>${b.per==='custom'?`<div><label>De</label><select data-b="${i}" data-f="cini">${mesOpt(b.cini)}</select></div><div><label>Até</label><select data-b="${i}" data-f="cfim">${mesOpt(b.cfim)}</select></div>`:''}</div>
+      <div style="margin-top:6px;font-size:12px"><b>Colunas de variação:</b> ${cbx('data-bv="'+i+'" data-v="ant"',(b.v||[]).includes('ant'),'vs ano anterior')}${cbx('data-bv="'+i+'" data-v="mesAnt"',(b.v||[]).includes('mesAnt'),'último mês × mês anterior')}${cbx('data-bv="'+i+'" data-v="perAnt"',(b.v||[]).includes('perAnt'),'vs período anterior (mesmo nº de meses)')}</div>`+indUI(b,i);
+    else if(b.t==='grafico') h+=`<div style="display:flex;gap:8px;flex-wrap:wrap"><div><label>Agrupar por</label>${sel('data-b="'+i+'" data-f="gran"',b.gran||'mes',[['mes','Mês'],['semana','Semana'],['dia','Dia']])}</div><div><label>Tipo</label>${sel('data-b="'+i+'" data-f="tipo"',b.tipo||'bar',[['bar','Barras'],['line','Linhas']])}</div></div>${(b.gran||'mes')==='mes'?cbx('data-bv="'+i+'" data-v="__ant"',b.ant,'Comparar com o ano anterior'):''}`+indUI(b,i);
+    else if(b.t==='kpis') h+=cbx('data-bv="'+i+'" data-v="__var"',b.var!==false,'Mostrar variação vs ano anterior')+indUI(b,i);
+    else if(b.t==='ranking') h+=`<div><label>Quantidade</label>${sel('data-b="'+i+'" data-f="n"',b.n||10,[[5,'Top 5'],[10,'Top 10'],[15,'Top 15'],[20,'Top 20']])}</div>`+indUI(b,i);
+    else if(b.t==='texto') h+=`<label style="margin-top:6px">Texto</label><textarea data-b="${i}" data-f="txt" rows="6" style="width:100%" placeholder="Digite livremente (análises, observações, pautas…)">${esc(b.txt||'')}</textarea>`;
+    else if(b.t==='manual') h+=`<label style="margin-top:6px">Colunas (separe por ; ou Tab)</label>${campo(i,'cols',b.cols,'Apoio de ROCCA; JAN; FEV; TOTAL')}<label style="margin-top:6px">Linhas (uma por linha; células separadas por ; ou Tab — dá para colar do Excel)</label><textarea data-b="${i}" data-f="linhas" rows="6" style="width:100%;font-family:monospace;font-size:12px" placeholder="Apoio de semovente; 42; 33; 75">${esc(b.linhas||'')}</textarea><label style="margin-top:6px">Observação (rodapé da tabela)</label>${campo(i,'obs',b.obs,'')}`;
+    else h+=indUI(b,i);
+    return h; };
+  const blocos=G.blocos.map((b,i)=>`<details data-d="${i}" ${b.open?'open':''} style="background:#fff;border:1px solid #cdbf8a;border-radius:8px;margin:6px 0;padding:6px 10px"><summary style="cursor:pointer;font-size:13px"><b>${i+1}.</b> ${GDO_TIPOS[b.t]} — <span style="color:#555">${esc((b.tit||'').replace('{ano}',G.ano).replace('{anoAnt}',+G.ano-1).replace('{periodo}','…'))}</span>
+     <span style="float:right;white-space:nowrap"><a href="#" data-m="${i}" data-w="up" title="Subir">▲</a> <a href="#" data-m="${i}" data-w="dn" title="Descer">▼</a> <a href="#" data-m="${i}" data-w="dup" title="Duplicar">⧉</a> <a href="#" data-m="${i}" data-w="rm" style="color:#a4202a" title="Remover">✖</a></span></summary><div style="padding-top:8px">${blocoUI(b,i)}</div></details>`).join('')||'<p style="color:#888;font-size:12px">Nenhuma página no corpo. Adicione abaixo.</p>';
+  prodOv(`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">📑 Gerar GDO – Gestão do Desempenho Operacional</h3><div style="display:flex;gap:6px"><button class="btn" id="gdo-go">📑 Gerar PDF</button><button class="btn secundario pd-sm" id="gdo-x">✖ Fechar</button></div></div>
+   <p style="font-size:12px;color:#555;margin:8px 0">A capa é fixa (muda só o período). O corpo é livre: monte as páginas abaixo, na ordem que quiser. Sua configuração fica salva neste navegador.</p>
+   <div class="pd-box"><b style="font-size:13px">1) Período e filtros</b>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:6px"><div><label>Ano</label><select id="gdo-ano">${anos.map(a=>`<option ${a===G.ano?'selected':''}>${a}</option>`).join('')}</select></div>
      <div><label>Do mês</label><select id="gdo-mi">${ms}</select></div><div><label>Até o mês</label><select id="gdo-mf">${ms}</select></div>
      <div style="font-size:12px;padding-bottom:8px">Período avaliado: <b id="gdo-rot">${gdoRotPer(ini,fim)}</b></div></div>
-   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px">
-     <div class="pd-box"><b style="font-size:12.5px">Comparativos (colunas de variação)</b>${cb('gdo-ant',G.ant,'Ano anterior (mesmo período) + quadro do ano anterior')}${cb('gdo-mesant',G.mesAnt,'Mês anterior (último mês × mês anterior)')}${cb('gdo-perant',G.perAnt,'Período anterior (mesmo nº de meses, imediatamente antes)')}</div>
-     <div class="pd-box"><b style="font-size:12.5px">Páginas opcionais</b>${cb('gdo-pel',G.pel,'Quadro por pelotão')}${cb('gdo-graf',G.graf,'Gráficos de evolução mensal')}</div></div>
-   <div style="font-size:12px;margin-top:10px"><b>Pelotões</b> <span style="color:#777">(nenhum marcado = todos)</span><div style="margin-top:3px">${pels.map(p=>`<span class="pd-chip ${G.pels.includes(p)?'on':''}" data-gp="${esc(p)}">${esc(p)}</span>`).join('')}</div></div>
-   <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="gdo-go">📑 Gerar GDO (PDF)</button><span id="gdo-msg" style="font-size:12px;color:#a4202a"></span></div>
-   <p style="font-size:11.5px;color:#777;margin-top:10px">Na janela seguinte clique em “Imprimir / Salvar PDF” e escolha “Salvar como PDF”. “—” = a planilha não tem esse lançamento (não é zero).</p>`);
-  const ov=document.getElementById('prod-fontes'); const $=id=>document.getElementById(id);
+    <div style="font-size:12px;margin-top:8px"><b>Pelotões</b> <span style="color:#777">(nenhum = todos)</span><div style="margin-top:3px">${pels.map(p=>chip('data-gp',p,p,G.pels.includes(p))).join('')}</div></div>
+    <details style="margin-top:8px" ${G.avancado?'open':''} data-av="1"><summary style="cursor:pointer;font-size:12.5px"><b>Mais filtros</b> (tipo de pelotão, dias, categorias, droga, dinheiro, duplicados, alertas)</summary>
+     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:6px">
+      <div><label>Tipo de pelotão</label>${sel('data-g="tipoPel"',G.tipoPel,[['','Todos'],['GER','Só GER'],['CHOQUE','Só CHOQUE/MGER']])}</div>
+      <div><label>Droga</label>${sel('data-g="droga"',G.droga,[['','Todas'],['coc','Com cocaína'],['crack','Com crack'],['mac','Com maconha'],['outras','Com outros']])}</div>
+      <div><label>Dinheiro mínimo (R$)</label><input data-g="minDin" inputmode="decimal" value="${esc(G.minDin)}" style="width:110px"></div>
+      <div><label>Duplicados</label>${sel('data-g="dup"',G.dup,[['incluir','Incluir'],['ocultar','Ocultar suspeitos'],['so','Só suspeitos']])}</div>
+      <div><label>Alertas de dados</label>${sel('data-g="alerta"',G.alerta,[['todos','Todos'],['sem','Sem alertas'],['so','Só com alertas']])}</div></div>
+     <div style="font-size:12px;margin-top:6px"><b>Dias da semana:</b> ${PROD_DOW.map((d,i)=>chip('data-gd',i,d.slice(0,3),G.dow.includes(i))).join('')}</div>
+     <div style="font-size:12px;margin-top:6px"><b>Só ocorrências com:</b> ${Object.entries(GDO_CATS).map(([k,t])=>chip('data-gc',k,t,G.cats.includes(k))).join('')}</div></details></div>
+   <div class="pd-box" style="margin-top:10px"><b style="font-size:13px">2) Corpo do documento</b> <span style="font-size:11.5px;color:#777">— cada item vira uma página (abra para configurar)</span>${blocos}
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b style="font-size:12px">＋ Adicionar:</b>${Object.entries(GDO_TIPOS).map(([k,t])=>`<button class="btn secundario pd-sm" data-add="${k}">${t}</button>`).join('')}</div></div>
+   <div id="gdo-msg" style="font-size:12px;color:#a4202a;margin-top:8px"></div>
+   <p style="font-size:11.5px;color:#777;margin-top:6px">Na tela seguinte clique em “Imprimir / Salvar PDF” e escolha “Salvar como PDF”. “—” = a planilha não tem esse lançamento (não é zero).</p>`);
+  const ov=document.getElementById('prod-fontes'); ov.scrollTop=sc; const $=id=>document.getElementById(id);
   $('gdo-mi').value=G.mi; $('gdo-mf').value=G.mf;
-  const rot=()=>{ const a=G.ano, i=a+'-'+String(G.mi).padStart(2,'0'), f=a+'-'+String(G.mf).padStart(2,'0'); $('gdo-rot').textContent=G.mi>G.mf?'(mês inicial depois do final)':gdoRotPer(i,f); };
+  const rot=()=>{ $('gdo-rot').textContent=G.mi>G.mf?'(mês inicial depois do final)':gdoRotPer(G.ano+'-'+String(G.mi).padStart(2,'0'),G.ano+'-'+String(G.mf).padStart(2,'0')); };
+  const tog=(a,x)=>{ const i=a.indexOf(x); if(i>=0) a.splice(i,1); else a.push(x); };
   $('gdo-x').onclick=prodFontesFechar;
-  ov.onchange=e=>{ const t=e.target; if(t.id==='gdo-ano'){ G.ano=t.value; const ms2=L.filter(r=>r.data.startsWith(G.ano)).map(r=>+r.data.slice(5,7)); G.mf=Math.max(...ms2); $('gdo-mf').value=G.mf; if(G.mi>G.mf){G.mi=1;$('gdo-mi').value=1;} }
+  $('gdo-go').onclick=()=>{ if(G.mi>G.mf){ $('gdo-msg').textContent='Mês inicial maior que o final.'; return; } if(!G.blocos.length){ $('gdo-msg').textContent='Adicione ao menos uma página ao corpo.'; return; } prodGdoGerar(); };
+  ov.addEventListener('toggle',e=>{ const d=e.target; if(d.dataset&&d.dataset.d!==undefined){ G.blocos[+d.dataset.d].open=d.open; gdoSalvarCfg(); } else if(d.dataset&&d.dataset.av){ G.avancado=d.open; } },true);
+  ov.oninput=e=>{ const t=e.target; if(t.dataset.b!==undefined&&(t.tagName==='TEXTAREA'||t.type==='text'||t.tagName==='INPUT')){ G.blocos[+t.dataset.b][t.dataset.f]=t.value; gdoSalvarCfg(); } else if(t.dataset.g==='minDin'){ G.minDin=t.value; gdoSalvarCfg(); } };
+  ov.onchange=e=>{ const t=e.target; let re=false;
+    if(t.id==='gdo-ano'){ G.ano=t.value; G.mi=1; G.mf=ultMes(G.ano); $('gdo-mi').value=1; $('gdo-mf').value=G.mf; }
     else if(t.id==='gdo-mi') G.mi=+t.value; else if(t.id==='gdo-mf') G.mf=+t.value;
-    else if(t.id==='gdo-ant') G.ant=t.checked; else if(t.id==='gdo-mesant') G.mesAnt=t.checked; else if(t.id==='gdo-perant') G.perAnt=t.checked; else if(t.id==='gdo-pel') G.pel=t.checked; else if(t.id==='gdo-graf') G.graf=t.checked; rot(); };
-  ov.onclick=e=>{ const c=e.target.closest('[data-gp]'); if(c){ const k=c.dataset.gp,i=G.pels.indexOf(k); if(i>=0) G.pels.splice(i,1); else G.pels.push(k); c.classList.toggle('on'); } };
-  $('gdo-go').onclick=()=>{ if(G.mi>G.mf){ $('gdo-msg').textContent='Mês inicial maior que o final.'; return; } prodGdoGerar(); };
+    else if(t.dataset.g&&t.dataset.g!=='minDin') G[t.dataset.g]=t.value;
+    else if(t.dataset.bv!==undefined){ const b=G.blocos[+t.dataset.bv], v=t.dataset.v; if(v==='__ant') b.ant=t.checked; else if(v==='__var') b.var=t.checked; else { b.v=b.v||[]; if(t.checked&&!b.v.includes(v)) b.v.push(v); if(!t.checked) b.v=b.v.filter(x=>x!==v); } }
+    else if(t.dataset.b!==undefined&&t.tagName==='SELECT'){ const b=G.blocos[+t.dataset.b]; b[t.dataset.f]=t.value; if(t.dataset.f==='per'&&t.value==='custom'){ b.cini=b.cini||meses[Math.max(0,meses.length-2)]; b.cfim=b.cfim||meses[meses.length-1]; } re=true; }
+    else return;
+    gdoSalvarCfg(); rot(); if(re) prodGdoAbrir(); };
+  ov.onclick=e=>{ const t=e.target;
+    const gp=t.closest('[data-gp]'); if(gp){ tog(G.pels,gp.dataset.gp); gp.classList.toggle('on'); gdoSalvarCfg(); return; }
+    const gd=t.closest('[data-gd]'); if(gd){ tog(G.dow,+gd.dataset.gd); gd.classList.toggle('on'); gdoSalvarCfg(); return; }
+    const gc=t.closest('[data-gc]'); if(gc){ tog(G.cats,gc.dataset.gc); gc.classList.toggle('on'); gdoSalvarCfg(); return; }
+    const bi=t.closest('[data-bi]'); if(bi){ const b=G.blocos[+bi.dataset.bi]; if(b.t==='ranking') b.ind=[bi.dataset.k]; else { b.ind=gdoInd(b).slice(); tog(b.ind,bi.dataset.k); } gdoSalvarCfg(); prodGdoAbrir(); return; }
+    const ia=t.closest('[data-ia]'); if(ia){ e.preventDefault(); const b=G.blocos[+ia.dataset.ia]; b.ind=ia.dataset.w==='todos'?PROD_MET.map(m=>m.k):[]; gdoSalvarCfg(); prodGdoAbrir(); return; }
+    const mv=t.closest('[data-m]'); if(mv){ e.preventDefault(); e.stopPropagation(); const i=+mv.dataset.m, w=mv.dataset.w, a=G.blocos;
+      if(w==='rm') a.splice(i,1); else if(w==='dup') a.splice(i+1,0,JSON.parse(JSON.stringify(a[i]))); else if(w==='up'&&i>0) [a[i-1],a[i]]=[a[i],a[i-1]]; else if(w==='dn'&&i<a.length-1) [a[i+1],a[i]]=[a[i],a[i+1]];
+      gdoSalvarCfg(); prodGdoAbrir(); return; }
+    const ad=t.closest('[data-add]'); if(ad){ const k=ad.dataset.add; const nb={t:k,tit:{tabela:'Quadro de indicadores ({periodo})',kpis:'Resumo do período ({periodo})',grafico:'Evolução',pelotao:'Produtividade por pelotão ({periodo})',dow:'Por dia da semana ({periodo})',ranking:'Maiores registros ({periodo})',texto:'Análise',manual:'Quadro'}[k],open:true};
+      if(k==='tabela'){ nb.per='gdo'; nb.v=[]; } if(k==='grafico'){ nb.gran='mes'; nb.tipo='bar'; nb.ant=false; } if(k==='ranking'){ nb.n=10; } if(k==='manual'){ nb.cols='Item; JAN; FEV; TOTAL'; nb.linhas=''; }
+      G.blocos.push(nb); gdoSalvarCfg(); prodGdoAbrir(); setTimeout(()=>{ const o=document.getElementById('prod-fontes'); if(o) o.scrollTop=o.scrollHeight; },30); }
+  };
 }
+
+function gdoSub(txt,G,rotP,pf){ return String(txt||'').replace(/\{anoAnt\}/g,String(+(pf||G.ano+'-01').slice(0,4)-1)).replace(/\{ano\}/g,(pf||G.ano+'-01').slice(0,4)).replace(/\{periodo\}/g,rotP); }
 function prodGdoGerar(){
-  const G=PROD.GDO; gdoCss();
-  const ini=G.ano+'-'+String(G.mi).padStart(2,'0'), fim=G.ano+'-'+String(G.mf).padStart(2,'0'); const n=G.mf-G.mi+1;
-  const D=gdoCalc(ini,fim,G.pels);
-  const iniA=gdoMesAdd(ini,-12), fimA=gdoMesAdd(fim,-12); const DA=(G.ant||G.graf)?gdoCalc(iniA,fimA,G.pels):null;
-  const vars=[];
-  if(G.ant) vars.push({h:'VARIAÇÃO vs '+(+G.ano-1),a:k=>gdoCel(D,k),b:k=>gdoCel(DA,k)});
-  if(G.mesAnt){ const mu=fim, mp=gdoMesAdd(fim,-1); const B=gdoCalc(mp,mp,G.pels); const U=D.porMes[mu]; vars.push({h:'VAR. '+GDO_MESES[+mu.slice(5,7)-1].slice(0,3)+' × '+GDO_MESES[+mp.slice(5,7)-1].slice(0,3),a:k=>gdoCel(U,k),b:k=>gdoCel(B.porMes[mp],k)}); }
-  if(G.perAnt){ const pf=gdoMesAdd(ini,-1), pi=gdoMesAdd(ini,-n); const P=gdoCalc(pi,pf,G.pels); vars.push({h:'VAR. vs PER. ANTERIOR',a:k=>gdoCel(D,k),b:k=>gdoCel(P,k)}); }
-  const rot=gdoRotPer(ini,fim), fontes=prodNomesFontes().join(' + '), gerado=new Date().toLocaleString('pt-BR');
-  const pg=(tit,corpo)=>`<div class="gdo-pg"><div class="gdo-hd"><img src="${GDO_LOGO}"><h2>${tit}</h2><small>4ª Cia PM Ind GER / 4º RPM<br>${rot}</small></div><div class="gdo-bd">${corpo}</div><div class="gdo-ft"><span>Fonte: ${esc(fontes)}${G.pels.length?' · Pelotões: '+esc(G.pels.join(', ')):''}</span><span>Gerado em ${gerado}</span></div></div>`;
-  const capa=(fim2)=>`<div class="gdo-pg gdo-capa"><div class="fr"></div><div class="fr2"></div><img class="lg" src="${GDO_LOGO}"><div class="tx"><div class="g1">Gestão do</div><div class="g2">DESEMPENHO<br>OPERACIONAL</div><div class="ln"></div><div class="u">4ª Cia PM Ind GER / 4º RPM</div>${fim2?'':`<div class="pe">Período avaliado: ${rot}</div>`}</div><div class="pm">POLÍCIA MILITAR DE MINAS GERAIS</div></div>`;
-  let num=0; const pgs=[capa(false)];
-  if(G.ant) pgs.push(pg(`${++num}. Produtividade de iniciativa (acumulado ${+G.ano-1})`,gdoTabela(DA,[])));
-  pgs.push(pg(`${++num}. Produtividade de iniciativa (acumulado ${G.ano})`,gdoTabela(D,vars)));
-  if(G.pel){
-    const ps=[...new Set(D.rows.map(r=>r.pel||'(sem pelotão)'))].sort(); const cols=['t','at','mi','dro','kgt','din','ar','au','cv','apv','vap','vr'];
-    const lin=ps.map(p=>{ const rs=D.rows.filter(r=>(r.pel||'(sem pelotão)')===p); const s=prodSoma(rs); return `<tr><td class="l">${esc(p)}</td>${cols.map(k=>`<td>${prodTemAlg(rs,k)?gdoFmt(s[k],PROD_MK[k].f):'<span class="nd">—</span>'}</td>`).join('')}</tr>`; }).join('');
-    const hd={t:'Tráfico',at:'Autores tráfico',mi:'Infratores',dro:'Drogas (porções)',kgt:'Barras (kg)',din:'Dinheiro',ar:'Armas',au:'Autor arma',cv:'Crime violento',apv:'Autor c. violento',vap:'Veíc. apreendidos',vr:'Veíc. recuperados'};
-    pgs.push(pg(`${++num}. Produtividade por pelotão (${rot})`,`<table class="gdo-t"><thead><tr><th class="l">PELOTÃO</th>${cols.map(k=>`<th>${hd[k]}</th>`).join('')}</tr></thead><tbody>${lin}<tr><td class="l">TOTAL</td>${cols.map(k=>`<td class="t">${prodTemAlg(D.rows,k)?gdoFmt(D.s[k],PROD_MK[k].f):'—'}</td>`).join('')}</tr></tbody></table>`));
-  }
-  const charts=[];
-  if(G.graf){ const gk=[['t','Ocorrências de tráfico'],['dro','Drogas – porções/unidades'],['din','Dinheiro apreendido (R$)'],['ar','Armas de fogo apreendidas']];
-    pgs.push(pg(`${++num}. Evolução mensal`,`<div class="gdo-gr">${gk.map(([k,t])=>`<div><b>${t}</b><canvas id="gdo-c-${k}" width="760" height="330"></canvas></div>`).join('')}</div>`)); charts.push(gk); }
-  pgs.push(capa(true).replace('<div class="g2">DESEMPENHO<br>OPERACIONAL</div>','<div class="g2">DESEMPENHO<br>OPERACIONAL</div><div class="pe" style="font-size:24pt;margin-top:10mm;background:none;color:#f4f2ea;padding:0">OBRIGADO!</div>'));
+  const G=PROD.GDO; gdoCss(); gdoSalvarCfg();
+  const ini=G.ano+'-'+String(G.mi).padStart(2,'0'), fim=G.ano+'-'+String(G.mf).padStart(2,'0'); const FIL=gdoFil(G);
+  const rot=gdoRotPer(ini,fim), fontes=prodNomesFontes().join(' + '), gerado=new Date().toLocaleString('pt-BR'), df=gdoDescF(G);
+  const cache={}; const calc=(a,b)=>{ const k=a+'|'+b; return cache[k]||(cache[k]=gdoCalc(a,b,FIL)); };
+  const pg=(tit,corpo)=>`<div class="gdo-pg"><div class="gdo-hd"><img src="${GDO_LOGO}"><h2>${esc(tit)}</h2><small>4ª Cia PM Ind GER / 4º RPM<br>${rot}</small></div><div class="gdo-bd">${corpo}</div><div class="gdo-ft"><span>Fonte: ${esc(fontes)}${df?' · '+esc(df):''}</span><span>Gerado em ${gerado}</span></div></div>`;
+  const capa=(fim2)=>`<div class="gdo-pg gdo-capa"><div class="fr"></div><div class="fr2"></div><img class="lg" src="${GDO_LOGO}"><div class="tx"><div class="g1">Gestão do</div><div class="g2">DESEMPENHO<br>OPERACIONAL</div><div class="ln"></div><div class="u">4ª Cia PM Ind GER / 4º RPM</div>${fim2?'<div class="pe" style="font-size:24pt;margin-top:10mm;background:none;color:#f4f2ea;padding:0">OBRIGADO!</div>':`<div class="pe">Período avaliado: ${rot}</div>`}</div><div class="pm">POLÍCIA MILITAR DE MINAS GERAIS</div></div>`;
+  const pgs=[capa(false)], charts=[]; let nc=0;
+  G.blocos.forEach(b=>{
+    let pi=ini, pf=fim;
+    if(b.t==='tabela'){ if(b.per==='ant'){ pi=gdoMesAdd(ini,-12); pf=gdoMesAdd(fim,-12); } else if(b.per==='custom'&&b.cini&&b.cfim&&b.cini<=b.cfim){ pi=b.cini; pf=b.cfim; } }
+    const rp=gdoRotPer(pi,pf); const tit=gdoSub(b.tit,G,rp,pf); const D=calc(pi,pf); const ind=gdoInd(b);
+    if(b.t==='tabela'){
+      const n=gdoMesesLista(pi,pf).length, vars=[], v=b.v||[];
+      if(v.includes('ant')){ const DA=calc(gdoMesAdd(pi,-12),gdoMesAdd(pf,-12)); vars.push({h:'VARIAÇÃO vs '+(+pf.slice(0,4)-1),a:k=>gdoCel(D,k),b:k=>gdoCel(DA,k)}); }
+      if(v.includes('mesAnt')){ const mp=gdoMesAdd(pf,-1), B=calc(mp,mp); vars.push({h:'VAR. '+GDO_MESES[+pf.slice(5,7)-1].slice(0,3)+' × '+GDO_MESES[+mp.slice(5,7)-1].slice(0,3),a:k=>gdoCel(D.porMes[pf],k),b:k=>gdoCel(B,k)}); }
+      if(v.includes('perAnt')){ const P=calc(gdoMesAdd(pi,-n),gdoMesAdd(pi,-1)); vars.push({h:'VAR. vs PER. ANTERIOR',a:k=>gdoCel(D,k),b:k=>gdoCel(P,k)}); }
+      const sel=gdoOrd(ind); const cls=sel.length>24?' style="font-size:6.6pt"':'';
+      for(let o=0;o<Math.max(1,Math.ceil(sel.length/24));o++) pgs.push(pg(tit+(sel.length>24?` (${o+1}/${Math.ceil(sel.length/24)})`:''),gdoTabela(D,vars,sel.slice(o*24,o*24+24))));
+    } else if(b.t==='pelotao'){
+      const ps=[...new Set(D.rows.map(r=>r.pel||'(sem pelotão)'))].sort(); const cols=gdoOrd(ind);
+      const lin=ps.map(p=>{ const rs=D.rows.filter(r=>(r.pel||'(sem pelotão)')===p); const s=prodSoma(rs); return `<tr><td class="l">${esc(p)}</td>${cols.map(k=>`<td>${prodTemAlg(rs,k)?gdoFmt(s[k],PROD_MK[k].f):'<span class="nd">—</span>'}</td>`).join('')}</tr>`; }).join('');
+      pgs.push(pg(tit,`<table class="gdo-t"><thead><tr><th class="l">PELOTÃO</th>${cols.map(k=>`<th class="t0">${esc(GDO_CURTO[k]||gdoLab(k))}</th>`).join('')}</tr></thead><tbody>${lin||'<tr><td class="l" colspan="9">Sem registros no período</td></tr>'}<tr><td class="l">TOTAL</td>${cols.map(k=>`<td class="t">${prodTemAlg(D.rows,k)?gdoFmt(D.s[k],PROD_MK[k].f):'—'}</td>`).join('')}</tr></tbody></table>`));
+    } else if(b.t==='dow'){
+      const cols=gdoOrd(ind); const ord=[1,2,3,4,5,6,0];
+      const lin=ord.map(d=>{ const rs=D.rows.filter(r=>prodDia(r.data).getDay()===d); const s=prodSoma(rs); return `<tr><td class="l">${PROD_DOW[d]}</td>${cols.map(k=>`<td>${prodTemAlg(rs,k)&&rs.length?gdoFmt(s[k],PROD_MK[k].f):'<span class="nd">—</span>'}</td>`).join('')}</tr>`; }).join('');
+      pgs.push(pg(tit,`<table class="gdo-t"><thead><tr><th class="l">DIA DA SEMANA</th>${cols.map(k=>`<th class="t0">${esc(GDO_CURTO[k]||gdoLab(k))}</th>`).join('')}</tr></thead><tbody>${lin}<tr><td class="l">TOTAL</td>${cols.map(k=>`<td class="t">${prodTemAlg(D.rows,k)?gdoFmt(D.s[k],PROD_MK[k].f):'—'}</td>`).join('')}</tr></tbody></table>`));
+    } else if(b.t==='kpis'){
+      const DA=b.var!==false?calc(gdoMesAdd(ini,-12),gdoMesAdd(fim,-12)):null;
+      const cards=gdoOrd(ind).map(k=>{ const v=gdoCel(D,k); const x=DA?gdoVar(v,gdoCel(DA,k)):null; return `<div class="kc"><span>${esc(gdoLab(k))}</span><b>${v===null?'—':gdoFmt(v,PROD_MK[k].f)}</b>${x?`<i class="${x.c}">${x.t==='—'?'':x.t+' vs '+(+G.ano-1)}</i>`:''}</div>`; }).join('');
+      pgs.push(pg(tit,`<div class="gdo-kp">${cards}</div>`));
+    } else if(b.t==='ranking'){
+      const k=ind[0]||'t', m=PROD_MK[k]; const n=+b.n||10;
+      const top=D.rows.filter(r=>prodTem(r,k)&&prodVal(r,k)>0).sort((a,c)=>prodVal(c,k)-prodVal(a,c)).slice(0,n);
+      pgs.push(pg(tit,`<h3 style="margin:2mm 0 3mm;font-size:12pt">${esc(gdoLab(k))} – maiores registros do período</h3><table class="gdo-t"><thead><tr><th style="width:14mm">#</th><th class="l">DATA</th><th class="l">PELOTÃO</th><th>${esc(gdoLab(k)).toUpperCase()}</th><th>LINHA NA PLANILHA</th></tr></thead><tbody>${top.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${prodDataBR(r.data)}</td><td class="l">${esc(r.pel||'—')}</td><td class="t">${gdoFmt(prodVal(r,k),m.f)}</td><td>${esc(r.id)}</td></tr>`).join('')||'<tr><td colspan="5">Sem registros</td></tr>'}</tbody></table>`));
+    } else if(b.t==='texto'){
+      pgs.push(pg(tit,`<div style="white-space:pre-wrap;font-size:14pt;line-height:1.55;padding:4mm 2mm">${esc(b.txt||'')}</div>`));
+    } else if(b.t==='manual'){
+      const cols=String(b.cols||'').split(/;|\t/).map(x=>x.trim()); const linhas=String(b.linhas||'').split('\n').filter(x=>x.trim()).map(l=>l.split(/;|\t/).map(x=>x.trim()));
+      const nc2=Math.max(cols.length,...linhas.map(l=>l.length),1); const chunks=[]; for(let i=0;i<Math.max(1,linhas.length);i+=20) chunks.push(linhas.slice(i,i+20));
+      chunks.forEach((ch,ci)=>pgs.push(pg(tit+(chunks.length>1?` (${ci+1}/${chunks.length})`:''),`<table class="gdo-t"><thead><tr>${Array.from({length:nc2},(_,j)=>`<th class="${j===0?'l':''}">${esc(cols[j]||'')}</th>`).join('')}</tr></thead><tbody>${ch.map(l=>`<tr>${Array.from({length:nc2},(_,j)=>`<td class="${j===0?'l':''}">${esc(l[j]||'')}</td>`).join('')}</tr>`).join('')}</tbody></table>${b.obs&&ci===chunks.length-1?`<p style="font-size:9pt;color:#555">${esc(b.obs)}</p>`:''}`)));
+    } else if(b.t==='grafico'){
+      const gran=b.gran||'mes'; const ks=gdoOrd(ind); const idx=nc++;
+      for(let o=0;o<Math.max(1,Math.ceil(ks.length/4));o++){ const grp=ks.slice(o*4,o*4+4); const w=grp.length===1?1500:760, h=grp.length===1?500:grp.length===2?470:330;
+        pgs.push(pg(tit+(ks.length>4?` (${o+1}/${Math.ceil(ks.length/4)})`:''),`<div class="gdo-gr" style="grid-template-columns:${grp.length===1?'1fr':'1fr 1fr'}">${grp.map(k=>`<div><b>${esc(gdoLab(k))}</b><canvas id="gdo-c-${idx}-${k}" width="${w}" height="${h}"></canvas></div>`).join('')}</div>`));
+        grp.forEach(k=>charts.push({id:`gdo-c-${idx}-${k}`,k,b,D,gran,pi,pf})); }
+    }
+  });
+  pgs.push(capa(true));
   let ov=document.getElementById('prod-overlay'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='prod-overlay'; ov.className='ov-print';
   ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:5;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="prodFecharRel()">✖ Voltar</button><span style="color:#ccc;font-size:12px">Escolha “Salvar como PDF” · margens: nenhuma · ative “Gráficos de segundo plano”.</span></div>${pgs.join('')}`;
   document.body.appendChild(ov); printPagina('size:338.67mm 190.5mm;margin:0');
-  if(charts.length){ charts[0].forEach(([k,t])=>{ const f=PROD_MK[k].f; const cur=D.meses.map(m=>gdoCel(D.porMes[m],k)); const ds=[{label:String(G.ano),data:cur,backgroundColor:'#4a3f22'}];
-      if(G.ant&&DA) ds.push({label:String(+G.ano-1),data:DA.meses.map(m=>gdoCel(DA.porMes[m],k)),backgroundColor:'#c9b97c'});
-      const c=desenharGrafico('gdo-c-'+k,{type:'bar',data:{labels:D.meses.map(m=>GDO_MESES[+m.slice(5,7)-1].slice(0,3)),datasets:ds},options:{responsive:false,animation:false,plugins:{legend:{display:ds.length>1}},scales:{y:{beginAtZero:true,ticks:{callback:v=>gdoFmt(v,f==='r'?'n':f)}}}}});
-      const cv=document.getElementById('gdo-c-'+k); if(c&&cv){ try{ const im=new Image(); im.src=cv.toDataURL('image/png'); cv.replaceWith(im); }catch(e){} } }); }
+  charts.forEach(c=>{ const {k,b,D,gran}=c; const f=PROD_MK[k].f; let labels,cur,ant=null;
+    if(gran==='mes'){ labels=D.meses.map(m=>GDO_MESES[+m.slice(5,7)-1].slice(0,3)); cur=D.meses.map(m=>gdoCel(D.porMes[m],k));
+      if(b.ant){ const DA=gdoCalc(gdoMesAdd(c.pi,-12),gdoMesAdd(c.pf,-12),FIL); ant=DA.meses.map(m=>gdoCel(DA.porMes[m],k)); } }
+    else { const rg=gdoRange(c.pi,c.pf); const passo=gran==='dia'?1:7; const chave=d=>gran==='dia'?d:prodSemana(d); const mapa={};
+      D.rows.forEach(r=>{ (mapa[chave(r.data)]=mapa[chave(r.data)]||[]).push(r); });
+      const ks=[]; let d=gran==='dia'?rg.de:prodSemana(rg.de); let guard=0; while(d<=rg.ate&&guard++<400){ ks.push(d); d=prodSomaDias(d,passo); }
+      labels=ks.map(x=>x.slice(8,10)+'/'+x.slice(5,7)); cur=ks.map(x=>{ const rs=mapa[x]||[]; return prodTemAlg(D.rows,k)?rs.reduce((a,r)=>a+prodVal(r,k),0):null; }); }
+    const cor=(i)=>i?'#c9b97c':'#4a3f22'; const tipo=b.tipo==='line'?'line':'bar';
+    const ds=[{label:gran==='mes'?c.pf.slice(0,4):'Período',data:cur,backgroundColor:cor(0),borderColor:cor(0),tension:.25,pointRadius:gran==='dia'?0:3}];
+    if(ant) ds.push({label:String(+c.pf.slice(0,4)-1),data:ant,backgroundColor:cor(1),borderColor:cor(1),tension:.25});
+    const ch=desenharGrafico(c.id,{type:tipo,data:{labels,datasets:ds},options:{responsive:false,animation:false,plugins:{legend:{display:ds.length>1}},scales:{y:{beginAtZero:true,ticks:{callback:v=>gdoFmt(v,f==='r'?'n':f)}},x:{ticks:{maxRotation:60,autoSkip:true,maxTicksLimit:gran==='dia'?31:60}}}}});
+    const cv=document.getElementById(c.id); if(ch&&cv){ try{ const im=new Image(); im.src=cv.toDataURL('image/png'); cv.replaceWith(im); }catch(e){} } });
 }
 
 // ================= ABA INFRATORES (P2) =================
