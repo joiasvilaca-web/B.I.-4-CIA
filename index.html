@@ -3977,6 +3977,7 @@ function infConjunto(){
   return {lista, ids, vis};
 }
 
+function infConjuntoPessoa(pid,prof){ const set=infBFS(+pid,+prof||1); const ids=new Set(set); ids.add(+pid); const lista=INF.pessoas.filter(p=>ids.has(p.id)); return {lista,ids,vis:ids}; }
 // ---------- entrada ----------
 async function renderAreaInfratores(areaId, acesso){
   infInjetarCss();
@@ -4060,7 +4061,7 @@ function infRender(){
   const P=INF.pessoas; const F=INF.F;
   const kp=[['Cadastrados',P.length],['Faccionados',P.filter(p=>p.faccao).length],['Foragidos',P.filter(p=>p.status==='foragido').length],['Presos',P.filter(p=>p.status==='preso').length],
     ['Vínculos',INF.vinculos.length],['Registros de crimes',INF.registros.length],['Com endereço no mapa',P.filter(p=>p.lat&&p.lng).length]];
-  const tabs=[['cadastro','📋 Cadastro'],['gov','🏛️ Governança criminal'],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa'],['teia','🕸️ Teia (rede)'],['pareto','📊 Pareto de alvos'],['config','⚙️ Configurações']];
+  const tabs=[['cadastro','📋 Cadastro'],['gov','🏛️ Governança criminal'],['alvo','🎯 Alvo prioritário'],['config','⚙️ Configurações']];
   const sel=(id,ops,val,todos)=>`<select id="${id}"><option value="">${todos}</option>${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(val)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
   const crimes=INF.cat.crimes.map(c=>c[0]); const focoOps=P.map(p=>[p.id,infNomeExib(p)]);
   box.innerHTML=`<div id="inf-root">
@@ -4107,7 +4108,7 @@ function infCorpo(){
   const c=document.getElementById('inf-corpo'); if(!c) return;
   if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   Object.values(INF.charts).forEach(x=>{ try{x.destroy();}catch(e){} }); INF.charts={};
-  ({cadastro:infCadastro,gov:infGovTab,alvo:infAlvoTab,mapa:infMapa,teia:infTeia,pareto:infPareto,config:infConfig})[INF.sub](c);
+  ({cadastro:infCadastro,gov:infGovTab,alvo:infAlvoTab,config:infConfig})[INF.sub](c);
 }
 
 // ---------- cadastro (lista) ----------
@@ -4144,11 +4145,12 @@ function infCsv(){
 let INF_FICHA = {id:null, aba:'dados', sel:{crimes:[]}};
 function infFicha(id, aba){
   INF_FICHA.id=id; INF_FICHA.aba=aba||'dados';
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   let ov=document.getElementById('inf-ficha'); if(!ov){ ov=document.createElement('div'); ov.id='inf-ficha'; ov.className='if-ov'; document.body.appendChild(ov); }
   const p = id ? INF.cache.byId.get(id) : null;
   if(id && !p){ ov.remove(); return; }
   INF_FICHA.sel.crimes = p ? (p.crimes||[]).slice() : [];
-  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','Vínculos'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário']];
+  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa']];
   ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
      <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
      <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
@@ -4157,14 +4159,14 @@ function infFicha(id, aba){
   ov.querySelectorAll('[data-ab]').forEach(e=>e.onclick=()=>{ INF_FICHA.aba=e.dataset.ab; infFicha(id,e.dataset.ab); });
   document.getElementById('iff-x').onclick=infFecharFicha;
   if(p){
-    document.getElementById('iff-teia').onclick=()=>{ infFecharFicha(); INF.F.foco=String(p.id); INF.sub='teia'; infRender(); };
-    document.getElementById('iff-mapa').onclick=()=>{ infFecharFicha(); INF.F.foco=String(p.id); INF.sub='mapa'; infRender(); };
+    document.getElementById('iff-teia').onclick=()=>infFicha(p.id,'vinc');
+    document.getElementById('iff-mapa').onclick=()=>infFicha(p.id,'mapa');
     document.getElementById('iff-print').onclick=()=>infImprimirFicha(p.id);
     const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
   }
-  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
+  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
 }
-let INF_CRIAR_CB=null;
+let INF_CRIAR_CB=null; let INF_VPEND=null;
 function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); INF_CRIAR_CB=null; }
 async function infAposSalvar(id,aba){ await infCarregar(); infRender(); if(document.getElementById('inf-ficha')) infFicha(id,aba); }
 
@@ -4214,34 +4216,42 @@ function infFichaDados(c,p){
 // -- vinculos
 function infOpcaoPessoa(p){ return `${p.nome}${p.alcunha?' “'+p.alcunha+'”':''} #${p.id}`; }
 function infFichaVinc(c,p){
-  const ed=INF.podeEditar; const L=INF.cache.adj.get(p.id)||[];
+  const ed=INF.podeEditar; const L=INF.cache.adj.get(p.id)||[]; const outro=(INF_VPEND&&INF_VPEND.de===p.id)?INF.cache.byId.get(INF_VPEND.outro):null;
   const linha=v=>{ const outro=INF.cache.byId.get(v.a_id===p.id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&!!v.a_superior; let rel=v.tipo;
     if(sub && v.a_superior){ const euSup=(v.a_id===p.id); rel=euSup?`Eu sou SUPERIOR de ${outro.nome}`:`Eu sou SUBORDINADO a ${outro.nome}`; }
     return `<div class="if-ln"><span style="width:10px;height:10px;border-radius:50%;background:${infCorVinculo(v.tipo)};display:inline-block"></span><a href="#" data-p="${outro.id}"><b>${esc(infNomeExib(outro))}</b></a> ${outro.faccao?`<span class="if-b" style="background:${infCorFaccao(outro.faccao)}">${esc(outro.faccao)}</span>`:''}
       <span>— ${esc(sub?v.tipo+': '+rel:v.tipo)}</span><span style="color:#888">força ${v.forca||2}/3</span>${v.obs?`<span style="color:#777">· ${esc(v.obs)}</span>`:''}${ed?`<button class="btn perigo if-sm" data-del="${v.id}" style="margin-left:auto">Remover</button>`:''}</div>`; };
   c.innerHTML=`${L.map(linha).join('')||'<p style="color:#888;font-size:13px">Nenhum vínculo cadastrado.</p>'}
-   ${ed?`<div class="if-box" style="margin-top:10px;background:#fbfaf3"><h3>+ Novo vínculo</h3><div class="if-grid">
-     <div class="if-g2"><label>Pessoa (digite para buscar; se não existir, cadastre rapidamente)</label><input id="ifv-p" list="ifv-dl" placeholder="nome ou alcunha">${infDl('ifv-dl',INF.pessoas.filter(x=>x.id!==p.id).map(infOpcaoPessoa))}</div>
+   ${ed?`<div class="if-box" style="margin-top:10px;background:#fbfaf3"><h3>🔗 Vincular a outro infrator</h3><div class="if-grid">
+     <div class="if-g2" style="grid-column:1/-1"><label>Infrator a vincular (cadastro único)</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${outro?`<b>${esc(infNomeExib(outro))}</b> ${infBadge(outro.status)}`:'<span style="color:#a4202a">Nenhum selecionado</span>'}<button class="btn secundario if-sm" id="ifv-pick" type="button">${outro?'Trocar':'🔍 Buscar / cadastrar novo'}</button></div></div>
      <div><label>Tipo de vínculo</label><select id="ifv-t">${INF.cat.vinculos.map(v=>`<option>${esc(v[0])}</option>`).join('')}</select></div>
      <div id="ifv-dirw"><label>Hierarquia</label><select id="ifv-dir"><option value="eu">Eu sou SUPERIOR dessa pessoa</option><option value="ele">Eu sou SUBORDINADO a essa pessoa</option></select></div>
      <div><label>Força do vínculo</label><select id="ifv-f"><option value="1">1 – fraco / eventual</option><option value="2" selected>2 – regular</option><option value="3">3 – forte / constante</option></select></div>
-     <div class="if-g2"><label>Observação</label><input id="ifv-o"></div></div>
-     <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn" id="ifv-ok">Adicionar vínculo</button><span id="ifv-m" style="font-size:12px"></span></div></div>`:''}`;
+     <div style="grid-column:1/-1"><label>Observação (livre — descreva a relação)</label><textarea id="ifv-o" rows="3" placeholder="Ex.: irmãos; atuam juntos no ponto da Rua X; rompidos desde 2025…"></textarea></div></div>
+     <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn" id="ifv-ok">Vincular</button><span id="ifv-m" style="font-size:12px"></span></div></div>`:''}
+   <div class="if-box" style="margin-top:10px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">🕸️ Teia deste infrator</h3><label style="font-size:12px">Alcance <select id="fv-prof" style="width:auto">${[1,2,3].map(n=>`<option value="${n}" ${INF_FICHA.prof===n?'selected':''}>${n} grau${n>1?'s':''}</option>`).join('')}</select></label></div><div id="fv-teia" style="margin-top:8px"></div></div>`;
   c.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{ e.preventDefault(); infFicha(+a.dataset.p); });
+  setTimeout(()=>infFichaTeiaBox(c,p),0);
   c.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este vínculo?')) return; try{ await apiInf('infExcluir',{entidade:'vinculo',id:+b.dataset.del}); await infAposSalvar(p.id,'vinc'); }catch(e){ infToast(e.message,true); } });
   if(!ed) return;
   const atualDir=()=>{ document.getElementById('ifv-dirw').style.display=infEhSub(document.getElementById('ifv-t').value)?'':'none'; }; document.getElementById('ifv-t').onchange=atualDir; atualDir();
+  document.getElementById('ifv-pick').onclick=()=>infEscolherInfrator('Vincular '+infNomeExib(p)+' a…',id=>{ INF_VPEND={de:p.id,outro:id}; infFicha(p.id,'vinc'); },[p.id]);
   document.getElementById('ifv-ok').onclick=async()=>{
-    const m=document.getElementById('ifv-m'); const txt=document.getElementById('ifv-p').value.trim(); if(!txt){ m.textContent='Informe a pessoa.'; return; }
+    const m=document.getElementById('ifv-m'); if(!outro){ m.innerHTML='<span style="color:#a4202a">Selecione o infrator a vincular.</span>'; return; }
     try{
-      let outroId; const mt=txt.match(/#(\d+)$/); if(mt) outroId=+mt[1]; else { const ach=INF.pessoas.filter(x=>x.id!==p.id&&(infNorm(x.nome)===infNorm(txt)||infNorm(x.alcunha)===infNorm(txt))); if(ach.length===1) outroId=ach[0].id; }
-      if(!outroId){ if(!confirm(`“${txt}” não está cadastrado(a). Cadastrar agora só com o nome e vincular?`)) return; const r=await apiInf('infSalvar',{entidade:'pessoa',dados:{nome:txt,status:'solto',risco:1}}); outroId=r.registro.id; }
-      const tipo=document.getElementById('ifv-t').value; const sub=infEhSub(tipo); const eu=document.getElementById('ifv-dir').value==='eu';
+      const tipo=document.getElementById('ifv-t').value; const sub=infEhSub(tipo); const eu=document.getElementById('ifv-dir').value==='eu'; const outroId=outro.id;
       const dados = sub && !eu ? {a_id:outroId,b_id:p.id,a_superior:true} : {a_id:p.id,b_id:outroId,a_superior:sub&&eu};
-      await apiInf('infSalvar',{entidade:'vinculo',dados:{...dados,tipo,forca:document.getElementById('ifv-f').value,obs:document.getElementById('ifv-o').value}});
-      await infAposSalvar(p.id,'vinc'); infToast('Vínculo adicionado.');
+      await apiInf('infSalvar',{entidade:'vinculo',dados:{...dados,tipo,forca:document.getElementById('ifv-f').value,obs:document.getElementById('ifv-o').value.trim()}});
+      INF_VPEND=null; await infAposSalvar(p.id,'vinc'); infToast('Vínculo adicionado.');
     }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; }
   };
+}
+function infFichaTeiaBox(c,p){ const pf=document.getElementById('fv-prof'); if(!pf) return; INF_FICHA.prof=INF_FICHA.prof||1; pf.value=INF_FICHA.prof; pf.onchange=()=>{ INF_FICHA.prof=+pf.value; infFichaVinc(c,p); }; infTeia(document.getElementById('fv-teia'),{pid:p.id,prof:INF_FICHA.prof,re:()=>infFichaVinc(c,p)}); }
+function infFichaMapa(c,p){
+  INF_FICHA.prof=INF_FICHA.prof||1;
+  c.innerHTML=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><b>🗺️ Mapa de ${esc(infNomeExib(p))}</b><label style="font-size:12px">Incluir vinculados até <select id="fm-prof" style="width:auto">${[1,2,3].map(n=>`<option value="${n}" ${INF_FICHA.prof===n?'selected':''}>${n} grau${n>1?'s':''}</option>`).join('')}</select></label></div><div id="fm-body"></div>`;
+  document.getElementById('fm-prof').onchange=e=>{ INF_FICHA.prof=+e.target.value; infFichaMapa(c,p); };
+  infMapa(document.getElementById('fm-body'),{pid:p.id,prof:INF_FICHA.prof,re:()=>infFichaMapa(c,p)});
 }
 // -- locais de atuacao
 function infFichaLoc(c,p){
@@ -4284,8 +4294,8 @@ function infFichaReg(c,p){
 }
 
 // ---------- mapa ----------
-async function infMapa(c){
-  const M=INF.M; const {lista,ids,vis:visSet}=infConjunto();
+async function infMapa(c,op){
+  const M=INF.M; const {lista,ids,vis:visSet}=op?infConjuntoPessoa(op.pid,op.prof):infConjunto(); const rr=()=>op?op.re():rr();
   const corPor=p=> M.cor==='status'?(INF_STCOR[p.status]||'#888') : M.cor==='risco'?['#9a9a9a','#c7b24a','#e0a02a','#d9622b','#a4202a','#a4202a'][p.risco||1] : M.cor==='nivel'?(p.nivel?INF_PAL[(p.nivel-1)%INF_PAL.length]:'#9a9a9a') : infCorFaccao(p.faccao);
   const pessoas=INF.pessoas.filter(p=>visSet.has(p.id));
   c.innerHTML=`<div class="if-mapwrap"><div class="if-box" style="margin:0"><h3>Camadas</h3>
@@ -4295,7 +4305,7 @@ async function infMapa(c){
     <button class="btn secundario if-sm" id="ifm-fit" style="margin-top:8px">⤢ Ajustar ao conjunto</button></div>
     <div id="if-mapa"></div></div>`;
   if(!(await infLib('leaflet'))){ document.getElementById('if-mapa').outerHTML=INF_AVISO_LIB('mapa'); return; }
-  c.querySelectorAll('[data-m]').forEach(e=>e.onchange=()=>{ M[e.dataset.m]=e.checked; infCorpo(); }); document.getElementById('ifm-cor').onchange=e=>{ M.cor=e.target.value; infCorpo(); };
+  c.querySelectorAll('[data-m]').forEach(e=>e.onchange=()=>{ M[e.dataset.m]=e.checked; rr(); }); document.getElementById('ifm-cor').onchange=e=>{ M.cor=e.target.value; rr(); };
   const map=L.map('if-mapa',{preferCanvas:true,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}).setView([-21.7642,-43.3503],12,{animate:false}); INF.mapa=map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
   const pts=[]; let semCoord=0, vinSem=0; const abrir=id=>`<a href="#" onclick="infFicha(${id});return false">Abrir ficha</a>`;
@@ -4323,8 +4333,8 @@ async function infMapa(c){
 }
 
 // ---------- teia (rede) ----------
-async function infTeia(c){
-  const T=INF.T; const {lista,ids,vis:visSet}=infConjunto();
+async function infTeia(c,op){
+  const T=INF.T; const {lista,ids,vis:visSet}=op?infConjuntoPessoa(op.pid,op.prof):infConjunto(); const rr=()=>op?op.re():rr();
   let edges=INF.vinculos.filter(v=>visSet.has(v.a_id)&&visSet.has(v.b_id)&&INF.cache.byId.has(v.a_id)&&INF.cache.byId.has(v.b_id));
   const comArestas=new Set(); edges.forEach(v=>{ comArestas.add(v.a_id); comArestas.add(v.b_id); });
   let pessoas=INF.pessoas.filter(p=>visSet.has(p.id)); if(!T.isolados) pessoas=pessoas.filter(p=>comArestas.has(p.id));
@@ -4337,9 +4347,9 @@ async function infTeia(c){
     <button class="btn secundario if-sm" id="ift-fit">⤢ Ajustar</button><button class="btn secundario if-sm" id="ift-png">🖼️ PNG</button></div>
     <div style="display:grid;grid-template-columns:1fr 250px;gap:10px"><div id="if-teia"></div><div id="ift-side" style="font-size:12.5px"><div style="color:#888">Clique em uma pessoa para ver o resumo. Duplo clique abre a ficha.</div></div></div>
     <div class="if-leg" id="ift-leg"></div></div>`;
-  if(!pessoas.length){ document.getElementById('if-teia').innerHTML='<p style="padding:20px;color:#888">Nenhum vínculo para o conjunto filtrado. Cadastre vínculos na ficha dos infratores (aba “Vínculos”).</p>'; return; }
+  if(!pessoas.length){ document.getElementById('if-teia').innerHTML='<p style="padding:20px;color:#888">Nenhum vínculo para o conjunto filtrado. Use “🔗 Vincular” acima para ligar este infrator a outros.</p>'; return; }
   if(!(await infLib('vis'))){ document.getElementById('if-teia').outerHTML=INF_AVISO_LIB('rede'); return; }
-  document.getElementById('ift-lay').onchange=e=>{ T.layout=e.target.value; infCorpo(); }; document.getElementById('ift-tam').onchange=e=>{ T.tam=e.target.value; infCorpo(); }; document.getElementById('ift-iso').onchange=e=>{ T.isolados=e.target.checked; infCorpo(); };
+  document.getElementById('ift-lay').onchange=e=>{ T.layout=e.target.value; rr(); }; document.getElementById('ift-tam').onchange=e=>{ T.tam=e.target.value; rr(); }; document.getElementById('ift-iso').onchange=e=>{ T.isolados=e.target.checked; rr(); };
   const tam=p=>{ const s=infScore(p); const v = T.tam==='grau'?s.grau/6 : T.tam==='risco'?((p.risco||1)/5) : s.total/100; return 12+Math.min(1,v)*26; };
   const nodes=pessoas.map(p=>{ const cor=infCorFaccao(p.faccao); const st=p.status; return {id:p.id,label:infCurto(p),title:`${infNomeExib(p)}\n${p.faccao||'sem facção'}${p.nivel?' · nível '+p.nivel:''}\n${INF_STATUS[st]||''}`,
     shape:(p.nivel&&p.nivel<=2)?'diamond':(p.status==='preso'?'square':'dot'),size:tam(p),level:p.nivel||6,
@@ -4362,7 +4372,7 @@ async function infTeia(c){
       <div>Prioridade: <b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b> · ${s.grau} vínculos · ${s.n} crimes</div>
       <div style="margin:6px 0">${Object.keys(infCrimesDe(p)).slice(0,6).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}</div>
       <div style="max-height:150px;overflow:auto">${L.map(v=>{ const o=INF.cache.byId.get(v.a_id===p.id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; const rel=sub?((v.a_id===p.id)?'superior de':'subordinado a'):v.tipo; return `<div style="font-size:11.5px">• ${esc(rel)} <a href="#" data-p="${o.id}">${esc(infCurto(o))}</a></div>`; }).join('')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn if-sm" onclick="infFicha(${p.id})">Abrir ficha</button><button class="btn secundario if-sm" onclick="INF.F.foco='${p.id}';infRender()">🎯 Focar rede</button></div>`;
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn if-sm" onclick="infFicha(${p.id})">Abrir ficha</button>${op?'':`<button class="btn secundario if-sm" onclick="INF.F.foco='${p.id}';infRender()">🎯 Focar rede</button>`}</div>`;
     side.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{ e.preventDefault(); net.selectNodes([+a.dataset.p]); net.focus(+a.dataset.p,{scale:1.1,animation:true}); }); });
   net.on('doubleClick',ev=>{ if(ev.nodes.length) infFicha(ev.nodes[0]); });
   document.getElementById('ift-fit').onclick=()=>net.fit({animation:true});
@@ -4372,68 +4382,6 @@ async function infTeia(c){
   document.getElementById('ift-leg').innerHTML=fac+'<span style="width:100%"></span>'+tipos+'<span style="width:100%"></span><span style="color:#666">◆ nível 1–2 · ■ preso · borda vermelha = foragido · tamanho = '+({score:'prioridade',grau:'nº de vínculos',risco:'risco'}[T.tam])+(INF.F.vizinhos?' · esmaecidos = conexões fora do filtro':'')+'</span>';
 }
 
-// ---------- Pareto ----------
-function infParetoDados(){
-  const P=INF.P; const {lista}=infConjunto(); const F=INF.F; const m=new Map(); const add=(k,l,v,id)=>{ if(!v) return; const o=m.get(k)||{k,label:l,v:0,id}; o.v+=v; m.set(k,o); };
-  lista.forEach(p=>{ const s=infScore(p); const cr=infCrimesDe(p,F.de,F.ate);
-    if(P.dim==='pessoa'){ add('p'+p.id, infNomeExib(p), P.modo==='qual'?s.total : P.med==='conex'?s.grau : P.med==='ddu'?(INF.cache.ddusDe.get(p.id)||[]).length : Object.values(cr).reduce((a,b)=>a+b,0), p.id); }
-    else if(P.dim==='crime'){ Object.keys(cr).forEach(c=>add(c,c,P.modo==='qual'?infPesoCrime(c)*cr[c]:cr[c])); }
-    else if(P.dim==='bairro_res'){ const b=p.bairro||'(sem bairro)'; add(b,b,P.modo==='qual'?s.total:1); }
-    else if(P.dim==='bairro_atu'){ const bs=new Set(); (INF.cache.locs.get(p.id)||[]).forEach(l=>{ if(l.bairro) bs.add(l.bairro); }); (INF.cache.regs.get(p.id)||[]).forEach(r=>{ if(r.bairro) bs.add(r.bairro); }); if(!bs.size) bs.add('(sem local informado)'); bs.forEach(b=>add(b,b,P.modo==='qual'?s.total:1)); }
-    else if(P.dim==='bairro_ddu'){ const seen=new Set(); (INF.cache.ddusDe.get(p.id)||[]).forEach(dd=>{ const b=(dd.local_denuncia&&dd.local_denuncia.bairro)||'(sem bairro)'; const k=b+'#'+dd.id; if(P.modo==='qual'){ add(b,b,s.total/Math.max(1,(INF.cache.ddusDe.get(p.id)||[]).length)); } else if(!seen.has(k)){ seen.add(k); add(b,b,1); } }); }
-    else if(P.dim==='faccao'){ const f=p.faccao||'(sem facção)'; add(f,f,P.modo==='qual'?s.total:1); }
-    else if(P.dim==='area'){ const a=p.area||'(sem área)'; add(a,a,P.modo==='qual'?s.total:1); }
-    else if(P.dim==='nivel'){ const n=p.nivel?('Nível '+p.nivel):'(sem nível)'; add(n,n,P.modo==='qual'?s.total:1); } });
-  const arr=[...m.values()].sort((a,b)=>b.v-a.v); const tot=arr.reduce((a,b)=>a+b.v,0)||1; let ac=0; arr.forEach(o=>{ ac+=o.v; o.pct=o.v/tot*100; o.ac=ac/tot*100; }); return {arr,tot,lista};
-}
-async function infPareto(c){
-  const P=INF.P; const d=infParetoDados(); const W=INF.pesos;
-  const dims=[['pessoa','Pessoas (alvos)'],['crime','Tipos de crime'],['bairro_res','Bairro de residência'],['bairro_atu','Bairro de atuação'],['bairro_ddu','Bairro das denúncias (DDU)'],['faccao','Facções'],['area','Áreas'],['nivel','Nível hierárquico']];
-  const unid = P.modo==='qual' ? (P.dim==='crime'?'gravidade (peso × ocorrências)':'índice de prioridade (0–100, somado)') : (P.dim==='pessoa'?(P.med==='conex'?'vínculos (grau)':P.med==='ddu'?'denúncias (DDU)':'ocorrências de crime'):P.dim==='crime'?'ocorrências':'pessoas');
-  c.innerHTML=`<div class="if-box"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
-    <div><label style="font-size:11px;font-weight:600;color:#666">Análise</label><div class="if-tabs" style="margin:0"><span class="if-tab ${P.modo==='quant'?'on':''}" data-md="quant">Quantitativa</span><span class="if-tab ${P.modo==='qual'?'on':''}" data-md="qual">Qualitativa (prioridade)</span></div></div>
-    <div><label style="font-size:11px;font-weight:600;color:#666">Agrupar por</label><select id="ifp-dim" style="width:auto">${dims.map(([k,l])=>`<option value="${k}" ${P.dim===k?'selected':''}>${l}</option>`).join('')}</select></div>
-    ${P.dim==='pessoa'&&P.modo==='quant'?`<div><label style="font-size:11px;font-weight:600;color:#666">Medir</label><select id="ifp-med" style="width:auto"><option value="ocorr" ${P.med==='ocorr'?'selected':''}>Ocorrências de crime</option><option value="conex" ${P.med==='conex'?'selected':''}>Conexões (vínculos)</option><option value="ddu" ${P.med==='ddu'?'selected':''}>Denúncias (DDU)</option></select></div>`:''}
-    <button class="btn secundario if-sm" id="ifp-print">🖨️ Imprimir / PDF</button></div>
-    ${P.modo==='qual'?`<details style="margin-bottom:10px;font-size:12px"><summary style="cursor:pointer;font-weight:600">⚖️ Pesos do índice de prioridade (gravidade dos crimes, reincidência, posição hierárquica, centralidade na rede, risco, situação)</summary>
-      <div class="if-grid" style="margin-top:8px">${[['gravidade','Gravidade dos crimes'],['reincidencia','Reincidência'],['hierarquia','Hierarquia na facção'],['rede','Centralidade na rede'],['denuncias','Denúncias (DDU)'],['risco','Risco (avaliação)'],['situacao','Situação (solto/foragido pesa mais)']].map(([k,l])=>`<div><label>${l}: <b id="ifw-v-${k}">${W[k]}</b></label><input type="range" min="0" max="50" value="${W[k]}" data-w="${k}" style="padding:0"></div>`).join('')}</div>
-      ${INF.podeEditar?'<button class="btn secundario if-sm" id="ifw-save" style="margin-top:6px">💾 Salvar pesos para todos</button>':''} <button class="btn secundario if-sm" id="ifw-reset" style="margin-top:6px">Restaurar padrão</button>
-      <p style="color:#666;margin:6px 0 0">O peso dos crimes individuais (ex.: homicídio 10, furto 3) fica em ⚙️ Configurações. O índice é uma ferramenta de apoio à priorização — não substitui a análise do P2.</p></details>`:''}
-    ${d.arr.length?`<canvas id="ifp-ch" style="max-height:360px"></canvas>
-    <p style="font-size:12px;color:#555;margin:6px 0 0">Total: <b>${d.tot.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b> ${esc(unid)} em ${d.arr.length} itens. <b>${d.arr.filter((o,i)=>i===0||d.arr[i-1].ac<80).length}</b> itens (zona A) concentram ~80% — são os principais alvos de atuação.</p>`:'<p style="color:#888">Sem dados para os filtros escolhidos. Cadastre infratores, crimes e vínculos para alimentar o Pareto.</p>'}</div>
-   ${d.arr.length?`<div class="if-box"><h3>Tabela de Pareto</h3><div class="if-tb"><table><thead><tr><th>#</th><th>Item</th><th style="text-align:right">${esc(unid)}</th><th style="text-align:right">%</th><th style="text-align:right">% acum.</th><th>Zona</th></tr></thead><tbody>
-    ${d.arr.map((o,i)=>{ const A=i===0||d.arr[i-1].ac<80; return `<tr class="${o.id?'cl':''}" ${o.id?`data-id="${o.id}"`:''}><td>${i+1}</td><td>${esc(o.label)}</td><td style="text-align:right">${o.v.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td style="text-align:right">${o.pct.toFixed(1).replace('.',',')}%</td><td style="text-align:right">${o.ac.toFixed(1).replace('.',',')}%</td><td>${A?'<span class="if-b" style="background:#a4202a">A – prioritário</span>':(o.ac<95?'<span class="if-b" style="background:#c77d2b">B</span>':'<span class="if-b" style="background:#888">C</span>')}</td></tr>`; }).join('')}</tbody></table></div></div>`:''}
-   ${P.modo==='qual'&&P.dim==='pessoa'&&d.arr.length?`<div class="if-box"><h3>Por que esses alvos? (composição do índice – 15 primeiros)</h3><canvas id="ifp-comp" style="max-height:420px"></canvas></div>`:''}`;
-  c.querySelectorAll('[data-md]').forEach(e=>e.onclick=()=>{ P.modo=e.dataset.md; infCorpo(); });
-  document.getElementById('ifp-dim').onchange=e=>{ P.dim=e.target.value; infCorpo(); }; const me=document.getElementById('ifp-med'); if(me) me.onchange=e=>{ P.med=e.target.value; infCorpo(); };
-  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=()=>infFicha(+t.dataset.id));
-  document.getElementById('ifp-print').onclick=()=>infImprimirPareto(d,unid);
-  c.querySelectorAll('[data-w]').forEach(r=>r.addEventListener('input',()=>{ W[r.dataset.w]=+r.value; document.getElementById('ifw-v-'+r.dataset.w).textContent=r.value; clearTimeout(INF._tw); INF._tw=setTimeout(()=>{ infRecalc(); infCorpo(); const dt=document.querySelector('#inf-corpo details'); if(dt) dt.open=true; },200); }));
-  const sv=document.getElementById('ifw-save'); if(sv) sv.onclick=async()=>{ try{ await apiInf('infConfigSalvar',{chave:'pesos',valor:INF.pesos}); infToast('Pesos salvos.'); }catch(e){ infToast(e.message,true); } };
-  document.getElementById('ifw-reset')&&(document.getElementById('ifw-reset').onclick=()=>{ INF.pesos=infMesclar(INF_DEF.pesos,null); infRecalc(); infCorpo(); });
-  if(!d.arr.length) return;
-  const top=d.arr.slice(0,25); const resto=d.arr.slice(25); const rot=top.map(o=>o.label.length>26?o.label.slice(0,25)+'…':o.label), vals=top.map(o=>Math.round(o.v*10)/10), ac=top.map(o=>Math.round(o.ac*10)/10);
-  if(resto.length){ rot.push('Outros ('+resto.length+')'); vals.push(Math.round(resto.reduce((a,b)=>a+b.v,0)*10)/10); ac.push(100); }
-  INF.charts.par=desenharGrafico('ifp-ch',{type:'bar',data:{labels:rot,datasets:[
-    {type:'bar',label:unid,data:vals,backgroundColor:top.map((o,i)=>(i===0||d.arr[i-1].ac<80)?'#a4202a':'#b8a76a').concat(resto.length?['#bbb']:[]),yAxisID:'y'},
-    {type:'line',label:'% acumulado',data:ac,borderColor:'#2c4870',backgroundColor:'#2c4870',yAxisID:'y1',tension:.15,pointRadius:3},
-    {type:'line',label:'80%',data:rot.map(()=>80),borderColor:'#888',borderDash:[6,5],pointRadius:0,yAxisID:'y1'}]},
-    options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true,title:{display:true,text:unid}},y1:{position:'right',min:0,max:100,grid:{drawOnChartArea:false},ticks:{callback:v=>v+'%'}}}}});
-  if(P.modo==='qual'&&P.dim==='pessoa'){ const t15=d.arr.slice(0,15).map(o=>INF.cache.byId.get(o.id)); const W2=INF.pesos, tw=Object.values(W2).reduce((a,b)=>a+(+b||0),0)||1;
-    const nomes={gravidade:'Gravidade',reincidencia:'Reincidência',hierarquia:'Hierarquia',rede:'Rede',denuncias:'Denúncias',risco:'Risco',situacao:'Situação'}; const cores=['#a4202a','#c77d2b','#6b4c9a','#2c4870','#0e8a8a','#8f7f45','#33502f'];
-    INF.charts.comp=desenharGrafico('ifp-comp',{type:'bar',data:{labels:t15.map(p=>infCurto(p)),datasets:Object.keys(nomes).map((k,i)=>({label:nomes[k],backgroundColor:cores[i],data:t15.map(p=>Math.round((+W2[k]||0)*(infScore(p).comp[k]||0)/tw*1000)/10)}))},options:{indexAxis:'y',plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true,title:{display:true,text:'pontos do índice'}},y:{stacked:true}}}}); }
-}
-function infImprimirPareto(d,unid){
-  let ov=document.getElementById('inf-overlay'); if(ov) ov.remove(); const P=INF.P;
-  const img=id=>{ const c=document.getElementById(id); try{ return c?`<img src="${c.toDataURL('image/png')}">`:''; }catch(e){ return ''; } };
-  ov=document.createElement('div'); ov.id='inf-overlay'; ov.className='ov-print';
-  ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="infFecharOverlay()">✖ Voltar</button></div>
-   <div class="if-folha"><h1>PARETO DE ALVOS – 4ª CIA PM IND GER</h1><div class="sg">DOCUMENTO SIGILOSO – USO RESTRITO</div>
-   <div style="text-align:center;font-size:9pt;margin-bottom:6pt">Análise ${P.modo==='qual'?'qualitativa (índice de prioridade)':'quantitativa'} por ${esc({pessoa:'pessoa',crime:'tipo de crime',bairro_res:'bairro de residência',bairro_atu:'bairro de atuação',bairro_ddu:'bairro das denúncias',faccao:'facção',area:'área',nivel:'nível hierárquico'}[P.dim])} · gerado em ${new Date().toLocaleString('pt-BR')}</div>
-   ${img('ifp-ch')}${P.modo==='qual'&&P.dim==='pessoa'?img('ifp-comp'):''}
-   <h2>Tabela</h2><table><thead><tr><th>#</th><th>Item</th><th>${esc(unid)}</th><th>%</th><th>% acum.</th><th>Zona</th></tr></thead><tbody>${d.arr.slice(0,60).map((o,i)=>`<tr><td>${i+1}</td><td>${esc(o.label)}</td><td>${o.v.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td>${o.pct.toFixed(1).replace('.',',')}%</td><td>${o.ac.toFixed(1).replace('.',',')}%</td><td>${(i===0||d.arr[i-1].ac<80)?'A':(o.ac<95?'B':'C')}</td></tr>`).join('')}</tbody></table></div>`;
-  document.body.appendChild(ov); printPagina('size:A4 portrait;margin:8mm');
-}
 function infFecharOverlay(){ const o=document.getElementById('inf-overlay'); if(o) o.remove(); printPagina(null); }
 function infImprimirFicha(id){
   const p=INF.cache.byId.get(id); if(!p) return; let ov=document.getElementById('inf-overlay'); if(ov) ov.remove(); const s=infScore(p);
@@ -4453,7 +4401,7 @@ function infImprimirFicha(id){
 // ---------- configuracoes ----------
 async function infConfig(c){
   const K=INF.cat, ed=INF.podeEditar; const ta=(id,l,v,h)=>`<div class="if-box"><h3>${l}</h3><textarea id="${id}" rows="${h||6}" ${ed?'':'disabled'}>${esc(v)}</textarea></div>`;
-  c.innerHTML=`<p style="font-size:12.5px;color:#555;margin-top:0">Listas usadas nos cadastros, filtros e no cálculo do Pareto. Uma linha por item.</p>
+  c.innerHTML=`<p style="font-size:12.5px;color:#555;margin-top:0">Listas usadas nos cadastros e filtros. Uma linha por item.</p>
    <div class="if-grid" style="align-items:start">
    ${ta('ifc-crimes','Tipos de crime e gravidade (nome | peso 1–10)',K.crimes.map(c=>c[0]+' | '+c[1]).join('\n'),12)}
    ${ta('ifc-fac','Facções',K.faccoes.join('\n'))}${ta('ifc-area','Áreas operacionais',K.areas.join('\n'))}
