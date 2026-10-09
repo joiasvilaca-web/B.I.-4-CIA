@@ -3588,18 +3588,18 @@ function gdoCss(){
   .gdo-t th.v{background:#2f5233}
   .gdo-t td.v{font-weight:bold;text-align:center}.gdo-t td.v.up{background:#c8e6c9;color:#14532d}.gdo-t td.v.dn{background:#f8c9cc;color:#8a1621}.gdo-t td.v.eq{background:#eee}
   .gdo-t .nd{color:#999}
-  .gdo-capa{background:linear-gradient(135deg,#a89468 0%,#9f8b5d 45%,#85733f 100%)}
-  .gdo-capa:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.045) 0 6mm,rgba(0,0,0,.03) 6mm 12mm)}
+  .gdo-capa{background:linear-gradient(135deg,#2c2c2c 0%,#1b1b1b 55%,#101010 100%)}
+  .gdo-capa:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 6mm,rgba(0,0,0,.0) 6mm 12mm)}
   .gdo-capa .fr{position:absolute;inset:7mm;border:.5mm solid rgba(234,232,223,.9);border-radius:5mm}
   .gdo-capa .fr2{position:absolute;inset:10mm;border:.25mm solid rgba(242,177,52,.85);border-radius:4mm}
-  .gdo-capa img.lg{position:absolute;left:34mm;top:50%;transform:translateY(-50%);height:128mm;filter:drop-shadow(0 3mm 4mm rgba(0,0,0,.35))}
+  .gdo-capa img.lg{position:absolute;left:34mm;top:50%;transform:translateY(-50%);height:128mm;filter:drop-shadow(0 0 3mm rgba(244,242,234,.35))}
   .gdo-capa .tx{position:absolute;left:150mm;right:24mm;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center}
   .gdo-capa .g1{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:46pt;color:#f4f2ea;line-height:1}
-  .gdo-capa .g2{font-family:'Arial Black',Impact,Arial,sans-serif;font-weight:900;font-size:44pt;line-height:1.04;color:#111;letter-spacing:0;margin-top:2mm}
+  .gdo-capa .g2{font-family:'Arial Black',Impact,Arial,sans-serif;font-weight:900;font-size:44pt;line-height:1.04;color:#fff;letter-spacing:0;margin-top:2mm}
   .gdo-capa .ln{width:70mm;height:1.4mm;background:#f2b134;margin:7mm 0 6mm}
-  .gdo-capa .u{font-size:21pt;font-weight:bold;color:#111}
-  .gdo-capa .pe{display:inline-block;margin-top:4mm;background:#111;color:#f4f2ea;font-size:17pt;font-weight:bold;padding:2.2mm 7mm;border-radius:2mm;align-self:flex-start}
-  .gdo-capa .pm{position:absolute;right:22mm;bottom:15mm;font-size:9pt;letter-spacing:2pt;color:#111;font-weight:bold}
+  .gdo-capa .u{font-size:21pt;font-weight:bold;color:#f4f2ea}
+  .gdo-capa .pe{display:inline-block;margin-top:4mm;background:#f2b134;color:#111;font-size:17pt;font-weight:bold;padding:2.2mm 7mm;border-radius:2mm;align-self:flex-start}
+  .gdo-capa .pm{position:absolute;right:22mm;bottom:15mm;font-size:9pt;letter-spacing:2pt;color:#cdbf8a;font-weight:bold}
   .gdo-gr{display:grid;grid-template-columns:1fr 1fr;gap:5mm;padding:4mm 12mm}
   .gdo-gr div{background:#fff;border:.3mm solid #b9ad84;padding:2mm 3mm;border-radius:2mm}.gdo-gr b{font-size:10pt;color:#4a3f22}.gdo-gr img{width:100%;display:block}
   @media print{ .gdo-pg{zoom:1 !important;margin:0 !important;box-shadow:none !important} }`;
@@ -3660,7 +3660,7 @@ function prodGdoGerar(){
   const charts=[];
   if(G.graf){ const gk=[['t','Ocorrências de tráfico'],['dro','Drogas – porções/unidades'],['din','Dinheiro apreendido (R$)'],['ar','Armas de fogo apreendidas']];
     pgs.push(pg(`${++num}. Evolução mensal`,`<div class="gdo-gr">${gk.map(([k,t])=>`<div><b>${t}</b><canvas id="gdo-c-${k}" width="760" height="330"></canvas></div>`).join('')}</div>`)); charts.push(gk); }
-  pgs.push(capa(true).replace('<div class="g2">DESEMPENHO<br>OPERACIONAL</div>','<div class="g2">DESEMPENHO<br>OPERACIONAL</div><div class="pe" style="font-size:24pt;margin-top:10mm;background:none;color:#111;padding:0">OBRIGADO!</div>'));
+  pgs.push(capa(true).replace('<div class="g2">DESEMPENHO<br>OPERACIONAL</div>','<div class="g2">DESEMPENHO<br>OPERACIONAL</div><div class="pe" style="font-size:24pt;margin-top:10mm;background:none;color:#f4f2ea;padding:0">OBRIGADO!</div>'));
   let ov=document.getElementById('prod-overlay'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='prod-overlay'; ov.className='ov-print';
   ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:5;background:#222;padding:10px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="prodFecharRel()">✖ Voltar</button><span style="color:#ccc;font-size:12px">Escolha “Salvar como PDF” · margens: nenhuma · ative “Gráficos de segundo plano”.</span></div>${pgs.join('')}`;
