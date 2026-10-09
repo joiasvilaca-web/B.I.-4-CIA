@@ -3795,17 +3795,37 @@ const INF_DEF = {
     niveis:[[1,'Liderança / chefia'],[2,'Gerência regional / coordenação'],[3,'Gerente de ponto / distribuidor'],[4,'Soldado / vendedor'],[5,'Olheiro / apoio']],
     vinculos:[['Subordinação',1],['Parceria / comparsa',0],['Familiar',0],['Cônjuge / companheiro(a)',0],['Fornecedor',0],['Cliente / usuário',0],['Receptador',0],['Rival / conflito',0],['Mesma unidade prisional',0]],
     locais:['Atuação','Ponto de venda','Esconderijo','Residência secundária','Ponto de encontro','Local da denúncia','Outro'],
-    bairros:[]
+    bairros:[],
+    batalhoes:['2º BPM','27º BPM'],
+    companhias:['135ª Cia','70ª Cia','31ª Cia','32ª Cia','99ª Cia','269ª Cia','173ª Cia'],
+    redes:['CV'],
+    govPapeis:[['Líder geral',1],['Conselho permanente (disciplina geral)',2],['Líder local',3],['Disciplina / conselho local',4]]
   },
-  pesos:{gravidade:35,reincidencia:20,hierarquia:15,rede:15,risco:10,situacao:5,denuncias:10}
+  pesos:{gravidade:35,reincidencia:20,hierarquia:15,rede:15,risco:10,situacao:5,denuncias:10},
+  alvo:{sensorPeso:5, regras:[
+    {on:true,c:'status',v:'foragido',modo:'fixo',pts:10,max:0,esc:'todos'},
+    {on:true,c:'status',v:'solto',modo:'fixo',pts:5,max:0,esc:'todos'},
+    {on:true,c:'gov_papel',v:'Líder geral',modo:'fixo',pts:40,max:0,esc:'todos'},
+    {on:true,c:'gov_papel',v:'Conselho permanente (disciplina geral)',modo:'fixo',pts:30,max:0,esc:'todos'},
+    {on:true,c:'gov_papel',v:'Líder local',modo:'fixo',pts:25,max:0,esc:'todos'},
+    {on:true,c:'gov_papel',v:'Disciplina / conselho local',modo:'fixo',pts:15,max:0,esc:'todos'},
+    {on:true,c:'nivel_ate',v:'1',modo:'fixo',pts:10,max:0,esc:'todos'},
+    {on:true,c:'crime_reg',v:'',modo:'unidade',pts:2,max:20,esc:'todos'},
+    {on:true,c:'crime_perfil',v:'Homicídio',modo:'fixo',pts:10,max:0,esc:'todos'},
+    {on:true,c:'crime_perfil',v:'Tráfico de drogas',modo:'fixo',pts:5,max:0,esc:'todos'},
+    {on:true,c:'vinculos',v:'',modo:'unidade',pts:1,max:10,esc:'todos'},
+    {on:true,c:'subordinados',v:'',modo:'unidade',pts:2,max:20,esc:'todos'},
+    {on:true,c:'ddus',v:'',modo:'unidade',pts:3,max:15,esc:'todos'},
+    {on:true,c:'risco',v:'3',modo:'unidade',pts:2,max:0,esc:'todos'}]}
 };
 const INF_STATUS = {solto:'Solto',preso:'Preso',foragido:'Foragido',monitorado:'Monitorado',morto:'Morto'};
 const INF_STCOR = {solto:'#c77d2b',preso:'#777',foragido:'#a4202a',monitorado:'#2c4870',morto:'#222'};
 const INF_PAL = ['#a4202a','#2c4870','#33502f','#c77d2b','#6b4c9a','#0e8a8a','#b8588a','#8f7f45','#5a6b7a','#d1495b','#3d8b37','#7a5230'];
 const INF_VCOR = ['#a4202a','#2c4870','#6b4c9a','#b8588a','#c77d2b','#0e8a8a','#8f7f45','#d1495b','#5a6b7a'];
 const INF_VCOR_FIXA = {'Subordinação':'#a4202a','Rival / conflito':'#222'};
-let INF = { filAberto:true, ok:false, podeEditar:false, pessoas:[], vinculos:[], locais:[], registros:[], ddus:[], ddupes:[], config:{}, cat:null, pesos:null, sub:'cadastro', ord:{k:'score',d:-1}, pag:0, mapa:null, net:null, charts:{}, ver:0, cache:null, libErr:{}, bairrosCarta:[],
-  F:{busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false,ddu:'',dduq:''},
+let INF = { filAberto:true, ok:false, podeEditar:false, pessoas:[], vinculos:[], locais:[], registros:[], ddus:[], ddupes:[], gov:[], alvos:[], alvoCfg:null, config:{}, cat:null, pesos:null, sub:'cadastro', ord:{k:'score',d:-1}, pag:0, mapa:null, net:null, charts:{}, ver:0, cache:null, libErr:{}, bairrosCarta:[],
+  F:{busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false,ddu:'',dduq:'',batalhao:'',companhia:'',rede:'',govpapel:''},
+  G:{view:'org',busca:'',rede:'',batalhao:'',companhia:'',bairro:'',regiao:'',papel:'',status:''}, A:{sub:'rank',modo:'geral',busca:'',rede:'',batalhao:'',companhia:'',bairro:'',status:'',soSel:false,top:100,aberto:null},
   M:{res:true,loc:true,reg:false,vin:true,lig:false,cor:'faccao'}, T:{layout:'fisica',isolados:false,tam:'score'}, P:{modo:'quant',dim:'pessoa',med:'ocorr'} };
 
 // ---------- utilitarios ----------
@@ -3900,7 +3920,9 @@ function infRecalc(){
   const dduById=new Map(INF.ddus.map(x=>[x.id,x])); const ddusDe=new Map();
   INF.ddupes.forEach(l=>{ const dd=dduById.get(l.ddu_id); if(!dd||!byId.has(l.pessoa_id)) return; (ddusDe.get(l.pessoa_id)||ddusDe.set(l.pessoa_id,[]).get(l.pessoa_id)).push({...dd,_link:l}); });
   ddusDe.forEach(a=>a.sort((x,y)=>String(x.data_criacao||'').localeCompare(String(y.data_criacao||''))));
-  INF.cache={byId,adj,sub,sup,regs,locs,ddusDe,dduById,score:new Map()};
+  const govP=new Map(); INF.gov.forEach(g=>{ if(!byId.has(g.pessoa_id)) return; (govP.get(g.pessoa_id)||govP.set(g.pessoa_id,[]).get(g.pessoa_id)).push(g); });
+  const alvoP=new Map(INF.alvos.filter(a=>byId.has(a.pessoa_id)).map(a=>[a.pessoa_id,a]));
+  INF.cache={byId,adj,sub,sup,regs,locs,ddusDe,dduById,govP,alvoP,alvoSc:null,score:new Map()};
   P.forEach(p=>INF.cache.score.set(p.id, infScoreCalc(p)));
 }
 // crimes de uma pessoa: tipo -> quantidade (registros; etiquetas do perfil contam 1 se nao houver registro daquele tipo)
@@ -3936,6 +3958,10 @@ function infPassa(p, F, foco){
   if(F.bairro && p.bairro!==F.bairro) return false;
   if(F.faccao==='__sim' && !p.faccao) return false; if(F.faccao==='__nao' && p.faccao) return false; if(F.faccao && !F.faccao.startsWith('__') && p.faccao!==F.faccao) return false;
   if(F.status && p.status!==F.status) return false;
+  if(F.rede && (p.rede||'')!==F.rede && !(c.govP.get(p.id)||[]).some(g=>g.rede===F.rede)) return false;
+  if(F.batalhao && (p.batalhao||'')!==F.batalhao && !(c.govP.get(p.id)||[]).some(g=>g.batalhao===F.batalhao)) return false;
+  if(F.companhia && (p.companhia||'')!==F.companhia && !(c.govP.get(p.id)||[]).some(g=>g.companhia===F.companhia)) return false;
+  if(F.govpapel){ const gl=c.govP.get(p.id)||[]; if(F.govpapel==='__sim'&&!gl.length) return false; if(F.govpapel==='__nao'&&gl.length) return false; if(!F.govpapel.startsWith('__')&&!gl.some(g=>g.papel===F.govpapel)) return false; }
   if(F.nivel && String(p.nivel||'')!==String(F.nivel)) return false;
   if(F.risco && (p.risco||1)<+F.risco) return false;
   const g=(c.adj.get(p.id)||[]).length; if(F.vinc==='com' && !g) return false; if(F.vinc==='sem' && g) return false;
@@ -3963,8 +3989,8 @@ async function renderAreaInfratores(areaId, acesso){
 }
 async function infCarregar(){
   const d=await apiInf('infCarregar');
-  INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.ddus=d.ddus||[]; INF.ddupes=d.ddu_pessoas||[]; INF.config=d.config||{};
-  INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos);
+  INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.ddus=d.ddus||[]; INF.ddupes=d.ddu_pessoas||[]; INF.gov=d.gov||[]; INF.alvos=d.alvos||[]; INF.config=d.config||{};
+  INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos); INF.alvoCfg=(INF.config.alvo&&Array.isArray(INF.config.alvo.regras))?{sensorPeso:+INF.config.alvo.sensorPeso>=0?+INF.config.alvo.sensorPeso:5,regras:INF.config.alvo.regras}:JSON.parse(JSON.stringify(INF_DEF.alvo));
   infRecalc(); INF.ok=true;
 }
 function infInjetarCss(){
@@ -3999,6 +4025,18 @@ function infInjetarCss(){
   .if-leg{font-size:11px;display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px}.if-leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
   .if-sig{background:#fff3cd;border:1px solid #e0b84a;border-radius:8px;padding:6px 12px;font-size:11.5px;margin-bottom:10px}
   .if-ln{display:flex;gap:8px;align-items:center;border-bottom:1px dotted #ddd;padding:5px 0;font-size:12.5px;flex-wrap:wrap}
+  .gv-wrap{overflow:auto}.gv-rede{background:#fff;border:1px solid #ccc4a8;border-radius:10px;padding:10px 12px;margin-bottom:14px}
+  .gv-rede>h3{margin:0 0 6px;font-size:14px}
+  .gv-lbl{text-align:center;font-size:10.5px;font-weight:700;color:#6b5c33;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px}
+  .gv-tier{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;position:relative;padding-top:12px}.gv-tier:before{content:"";position:absolute;top:0;left:50%;height:12px;border-left:2px solid #9f8b5d}
+  .gv-tier.first{padding-top:0}.gv-tier.first:before{display:none}
+  .gv-regs{align-items:flex-start}.gv-bt{flex:0 0 100%;text-align:center;font-weight:700;font-size:12px;color:#fff;background:#6b5c33;border-radius:6px;padding:3px 8px}
+  .gv-reg{border:1.5px solid #9f8b5d;border-radius:10px;padding:8px;background:#faf7ec;flex:1 1 300px;max-width:560px}
+  .gv-reg h4{margin:0 0 2px;font-size:13px}.gv-reg .meta{font-size:11px;color:#555}.gv-reg .disc{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  .gv-reg .gv-tier{padding-top:0;justify-content:center}
+  .gv-card{border:1px solid #b9ad84;border-left:5px solid var(--c,#999);border-radius:7px;padding:5px 9px;background:#fffdf5;min-width:140px;max-width:200px;cursor:pointer;font-size:12px;text-align:left}
+  .gv-card.lider{background:#fdf0c4;border-color:#9f8b5d}.gv-card b{display:block;font-size:12.5px}.gv-card small{display:block;color:#666;font-size:10.5px;line-height:1.25}
+  .gv-pt{font-size:10.5px;font-weight:700;color:#a4202a}
   .if-folha{background:#fff;width:210mm;min-height:297mm;margin:14px auto;padding:12mm;box-sizing:border-box;font-family:Arial,sans-serif;font-size:10.5pt;color:#000}
   .if-folha h1{font-size:14pt;text-align:center;margin:0 0 2pt}.if-folha .sg{text-align:center;color:#a4202a;font-weight:bold;font-size:9pt;margin-bottom:6pt}
   .if-folha h2{font-size:11pt;border-bottom:1.5px solid #000;margin:10pt 0 4pt;padding-bottom:2pt}
@@ -4022,7 +4060,7 @@ function infRender(){
   const P=INF.pessoas; const F=INF.F;
   const kp=[['Cadastrados',P.length],['Faccionados',P.filter(p=>p.faccao).length],['Foragidos',P.filter(p=>p.status==='foragido').length],['Presos',P.filter(p=>p.status==='preso').length],
     ['Vínculos',INF.vinculos.length],['Registros de crimes',INF.registros.length],['Com endereço no mapa',P.filter(p=>p.lat&&p.lng).length]];
-  const tabs=[['cadastro','📋 Cadastro'],['mapa','🗺️ Mapa'],['teia','🕸️ Teia (rede)'],['pareto','📊 Pareto de alvos'],['config','⚙️ Configurações']];
+  const tabs=[['cadastro','📋 Cadastro'],['gov','🏛️ Governança criminal'],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa'],['teia','🕸️ Teia (rede)'],['pareto','📊 Pareto de alvos'],['config','⚙️ Configurações']];
   const sel=(id,ops,val,todos)=>`<select id="${id}"><option value="">${todos}</option>${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(val)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
   const crimes=INF.cat.crimes.map(c=>c[0]); const focoOps=P.map(p=>[p.id,infNomeExib(p)]);
   box.innerHTML=`<div id="inf-root">
@@ -4030,13 +4068,14 @@ function infRender(){
    <div class="if-kpis">${kp.map(([l,v])=>`<div class="if-kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
      <div class="if-tabs" style="margin:0">${tabs.map(([k,l])=>`<span class="if-tab ${INF.sub===k?'on':''}" data-sub="${k}">${l}</span>`).join('')}</div>
-     <div style="display:flex;gap:6px">${INF.sub!=='config'?`<button class="btn secundario if-sm" id="if-fbtn">🔎 Filtros${infNFiltros()?' ('+infNFiltros()+' ativos)':''} ${INF.filAberto?'▴':'▾'}</button>`:''}${INF.podeEditar?'<button class="btn if-sm" id="if-novo">+ Novo infrator</button><button class="btn dourado if-sm" id="if-impddu">📎 Importar DDU (PDF)</button>':''}<button class="btn secundario if-sm" id="if-csv">⬇️ CSV</button></div></div>
-   ${INF.sub==='config'?'':`<div class="if-fil" id="if-fil" style="${INF.filAberto?'':'display:none'}">
+     <div style="display:flex;gap:6px">${!['config','gov','alvo'].includes(INF.sub)?`<button class="btn secundario if-sm" id="if-fbtn">🔎 Filtros${infNFiltros()?' ('+infNFiltros()+' ativos)':''} ${INF.filAberto?'▴':'▾'}</button>`:''}${INF.podeEditar?'<button class="btn if-sm" id="if-novo">+ Novo infrator</button><button class="btn dourado if-sm" id="if-impddu">📎 Importar DDU (PDF)</button>':''}<button class="btn secundario if-sm" id="if-csv">⬇️ CSV</button></div></div>
+   ${['config','gov','alvo'].includes(INF.sub)?'':`<div class="if-fil" id="if-fil" style="${INF.filAberto?'':'display:none'}">
      <div style="flex:1;min-width:200px"><label>Busca (nome, alcunha, documento, mãe, endereço, observações, etiquetas)</label><input id="ifx-busca" value="${esc(F.busca)}"></div>
      <div>${'<label>Área</label>'+sel('ifx-area',infAreas(),F.area,'Todas')}</div>
      <div><label>Bairro (residência)</label>${sel('ifx-bairro',infBairros().filter(b=>P.some(p=>p.bairro===b)),F.bairro,'Todos')}</div>
      <div><label>Atua no bairro</label>${sel('ifx-atua',infBairros().filter(b=>INF.locais.some(l=>l.bairro===b)||INF.registros.some(r=>r.bairro===b)),F.atua,'Todos')}</div>
      <div><label>Facção</label>${sel('ifx-faccao',[['__sim','▸ Faccionados'],['__nao','▸ Sem facção'],...infFaccoes()],F.faccao,'Todas')}</div>
+     <div><label>Rede criminosa</label>${sel('ifx-rede',infRedes(),F.rede,'Todas')}</div><div><label>Batalhão</label>${sel('ifx-batalhao',infBatalhoes(),F.batalhao,'Todos')}</div><div><label>Companhia</label>${sel('ifx-companhia',infCompanhias(),F.companhia,'Todas')}</div><div><label>Papel na governança</label>${sel('ifx-govpapel',[['__sim','▸ Qualquer papel'],['__nao','▸ Fora da governança'],...INF.cat.govPapeis.map(x=>x[0])],F.govpapel,'Todos')}</div>
      <div><label>Situação</label>${sel('ifx-status',Object.entries(INF_STATUS),F.status,'Todas')}</div>
      <div><label>Tipo de crime</label>${sel('ifx-crime',crimes,F.crime,'Todos')}</div>
      <div><label>Nível hierárquico</label>${sel('ifx-nivel',INF.cat.niveis.map(n=>[n[0],n[0]+' – '+n[1]]),F.nivel,'Todos')}</div>
@@ -4053,22 +4092,22 @@ function infRender(){
   const n=document.getElementById('if-novo'); if(n) n.onclick=()=>infFicha(null);
   const im=document.getElementById('if-impddu'); if(im) im.onclick=()=>infImportarDdu(null);
   document.getElementById('if-csv').onclick=infCsv;
-  if(INF.sub!=='config') infLigarFiltros();
+  if(!['config','gov','alvo'].includes(INF.sub)) infLigarFiltros();
   infCorpo();
 }
-function infNFiltros(){ const F=INF.F; return ['busca','area','bairro','faccao','status','crime','nivel','risco','vinc','de','ate','atua','foco','ddu','dduq'].filter(k=>F[k]).length+(F.vizinhos?1:0); }
+function infNFiltros(){ const F=INF.F; return ['busca','area','bairro','faccao','status','crime','nivel','risco','vinc','de','ate','atua','foco','ddu','dduq','batalhao','companhia','rede','govpapel'].filter(k=>F[k]).length+(F.vizinhos?1:0); }
 function infLigarFiltros(){
   const fb=document.getElementById('if-fbtn'); if(fb) fb.onclick=()=>{ INF.filAberto=!INF.filAberto; document.getElementById('if-fil').style.display=INF.filAberto?'':'none'; fb.textContent='🔎 Filtros'+(infNFiltros()?' ('+infNFiltros()+' ativos)':'')+' '+(INF.filAberto?'▴':'▾'); };
   const F=INF.F; let tb;
   const bind=(id,k,num)=>{ const e=document.getElementById(id); if(!e) return; e.addEventListener('input',()=>{ if(k==='busca'||k==='ddu'){ clearTimeout(tb); tb=setTimeout(()=>{F[k]=e.value; INF.pag=0; infCorpo();},250); return; } F[k]=e.type==='checkbox'?e.checked:e.value; INF.pag=0; infCorpo(); }); };
-  [['ifx-busca','busca'],['ifx-area','area'],['ifx-bairro','bairro'],['ifx-atua','atua'],['ifx-faccao','faccao'],['ifx-status','status'],['ifx-crime','crime'],['ifx-nivel','nivel'],['ifx-risco','risco'],['ifx-vinc','vinc'],['ifx-de','de'],['ifx-ate','ate'],['ifx-foco','foco'],['ifx-prof','prof'],['ifx-viz','vizinhos'],['ifx-ddu','ddu'],['ifx-dduq','dduq']].forEach(([i,k])=>bind(i,k));
-  document.getElementById('ifx-limpar').onclick=()=>{ INF.F={busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false,ddu:'',dduq:''}; INF.pag=0; infRender(); };
+  [['ifx-busca','busca'],['ifx-area','area'],['ifx-bairro','bairro'],['ifx-atua','atua'],['ifx-faccao','faccao'],['ifx-status','status'],['ifx-crime','crime'],['ifx-nivel','nivel'],['ifx-risco','risco'],['ifx-vinc','vinc'],['ifx-de','de'],['ifx-ate','ate'],['ifx-foco','foco'],['ifx-prof','prof'],['ifx-viz','vizinhos'],['ifx-ddu','ddu'],['ifx-dduq','dduq'],['ifx-rede','rede'],['ifx-batalhao','batalhao'],['ifx-companhia','companhia'],['ifx-govpapel','govpapel']].forEach(([i,k])=>bind(i,k));
+  document.getElementById('ifx-limpar').onclick=()=>{ INF.F={busca:'',area:'',bairro:'',faccao:'',status:'',crime:'',nivel:'',risco:'',vinc:'',de:'',ate:'',atua:'',foco:'',prof:1,vizinhos:false,ddu:'',dduq:'',batalhao:'',companhia:'',rede:'',govpapel:''}; INF.pag=0; infRender(); };
 }
 function infCorpo(){
   const c=document.getElementById('inf-corpo'); if(!c) return;
   if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   Object.values(INF.charts).forEach(x=>{ try{x.destroy();}catch(e){} }); INF.charts={};
-  ({cadastro:infCadastro,mapa:infMapa,teia:infTeia,pareto:infPareto,config:infConfig})[INF.sub](c);
+  ({cadastro:infCadastro,gov:infGovTab,alvo:infAlvoTab,mapa:infMapa,teia:infTeia,pareto:infPareto,config:infConfig})[INF.sub](c);
 }
 
 // ---------- cadastro (lista) ----------
@@ -4076,21 +4115,21 @@ function infBadge(st){ return `<span class="if-b" style="background:${INF_STCOR[
 function infRiscoHtml(r){ r=r||1; return `<span class="if-risco" title="Risco ${r}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=r?'on':''}"></i>`).join('')}</span>`; }
 function infCadastro(c){
   const {lista}=infConjunto(); const o=INF.ord; const F=INF.F;
-  const val=(p)=> o.k==='score'?infScore(p).total : o.k==='nome'?infNorm(p.nome) : o.k==='risco'?(p.risco||1) : o.k==='nivel'?(p.nivel||99) : o.k==='grau'?infScore(p).grau : o.k==='ddu'?(INF.cache.ddusDe.get(p.id)||[]).length : o.k==='crimes'?infScore(p).n : infNorm(p[o.k]||'');
+  const val=(p)=> o.k==='score'?infScore(p).total : o.k==='nome'?infNorm(p.nome) : o.k==='risco'?(p.risco||1) : o.k==='nivel'?(p.nivel||99) : o.k==='grau'?infScore(p).grau : o.k==='ddu'?(INF.cache.ddusDe.get(p.id)||[]).length : o.k==='crimes'?infScore(p).n : o.k==='alvo'?-(infAlvo().get(p.id)||{posGeral:1e9}).posGeral : infNorm(p[o.k]||'');
   const L=lista.slice().sort((a,b)=>{ const x=val(a),y=val(b); return (x>y?1:x<y?-1:0)*o.d || a.id-b.id; });
   const PP=40, np=Math.max(1,Math.ceil(L.length/PP)); if(INF.pag>=np) INF.pag=np-1; const pg=L.slice(INF.pag*PP, INF.pag*PP+PP);
   const th=(k,l)=>`<th data-o="${k}">${l}${o.k===k?(o.d>0?' ▲':' ▼'):''}</th>`;
   c.innerHTML=`<div class="if-box"><div style="font-size:12px;color:#666;margin-bottom:6px"><b>${L.length}</b> de ${INF.pessoas.length} cadastrados</div>
-   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}</tr></thead><tbody>
+   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}${th('alvo','Alvo #')}</tr></thead><tbody>
    ${pg.map(p=>{ const s=infScore(p); const cr=Object.keys(infCrimesDe(p,F.de,F.ate)); const nv=INF.cat.niveis.find(n=>n[0]===p.nivel);
      return `<tr class="cl" data-id="${p.id}"><td><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</td>
       <td>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>${p.faccao_funcao?`<div style="color:#777;font-size:11px">${esc(p.faccao_funcao)}</div>`:''}`:'<span style="color:#aaa">—</span>'}</td>
       <td title="${esc(nv?nv[1]:'')}">${p.nivel||'—'}${p.cargo?`<div style="color:#777;font-size:11px">${esc(p.cargo)}</div>`:''}</td><td>${infBadge(p.status)}</td><td>${infRiscoHtml(p.risco)}</td>
       <td>${esc(p.bairro||'')}${p.lat?' 📍':''}</td><td>${esc(p.area||'')}</td><td style="max-width:240px">${cr.slice(0,4).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}${cr.length>4?`<span class="if-chip">+${cr.length-4}</span>`:''}</td>
-      <td style="text-align:center" title="${esc((INF.cache.ddusDe.get(p.id)||[]).map(d=>d.protocolo).join(', '))}">${(INF.cache.ddusDe.get(p.id)||[]).length||'—'}</td><td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td></tr>`; }).join('')||'<tr><td colspan="11" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
+      <td style="text-align:center" title="${esc((INF.cache.ddusDe.get(p.id)||[]).map(d=>d.protocolo).join(', '))}">${(INF.cache.ddusDe.get(p.id)||[]).length||'—'}</td><td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td><td style="text-align:center">${infAlvoPosHtml(p.id)}</td></tr>`; }).join('')||'<tr><td colspan="12" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
    </tbody></table></div>
    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario if-sm" id="if-ant" ${INF.pag<=0?'disabled':''}>‹</button> Página ${INF.pag+1} de ${np} <button class="btn secundario if-sm" id="if-prox" ${INF.pag>=np-1?'disabled':''}>›</button></div></div>`;
-  c.querySelectorAll('th[data-o]').forEach(t=>t.onclick=()=>{ const k=t.dataset.o; INF.ord=INF.ord.k===k?{k,d:-o.d}:{k,d:(k==='score'||k==='risco'||k==='grau'||k==='ddu'?-1:1)}; infCorpo(); });
+  c.querySelectorAll('th[data-o]').forEach(t=>t.onclick=()=>{ const k=t.dataset.o; INF.ord=INF.ord.k===k?{k,d:-o.d}:{k,d:(k==='score'||k==='risco'||k==='grau'||k==='ddu'||k==='alvo'?-1:1)}; infCorpo(); });
   c.querySelectorAll('tr.cl').forEach(t=>t.onclick=()=>infFicha(+t.dataset.id));
   document.getElementById('if-ant').onclick=()=>{INF.pag--;infCorpo();}; document.getElementById('if-prox').onclick=()=>{INF.pag++;infCorpo();};
 }
@@ -4109,7 +4148,7 @@ function infFicha(id, aba){
   const p = id ? INF.cache.byId.get(id) : null;
   if(id && !p){ ov.remove(); return; }
   INF_FICHA.sel.crimes = p ? (p.crimes||[]).slice() : [];
-  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','Vínculos'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')]];
+  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','Vínculos'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário']];
   ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
      <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
      <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
@@ -4123,9 +4162,10 @@ function infFicha(id, aba){
     document.getElementById('iff-print').onclick=()=>infImprimirFicha(p.id);
     const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
   }
-  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
+  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
 }
-function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); }
+let INF_CRIAR_CB=null;
+function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); INF_CRIAR_CB=null; }
 async function infAposSalvar(id,aba){ await infCarregar(); infRender(); if(document.getElementById('inf-ficha')) infFicha(id,aba); }
 
 function infDl(id,ops){ return `<datalist id="${id}">${ops.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`; }
@@ -4139,6 +4179,9 @@ function infFichaDados(c,p){
     ${f('endereco','Endereço (rua, número)','','if-g2')}
     <div><label>Bairro</label><input id="iff-bairro" list="iff-dl-b" value="${esc(p.bairro||'')}" ${dis}>${infDl('iff-dl-b',infBairros())}</div>
     ${f('cidade','Cidade')}
+    <div><label>Rede criminosa</label><input id="iff-rede" list="iff-dl-r" value="${esc(p.rede||'')}" ${dis}>${infDl('iff-dl-r',infRedes())}</div>
+    <div><label>Batalhão (área de atuação)</label><input id="iff-batalhao" list="iff-dl-bt" value="${esc(p.batalhao||'')}" ${dis}>${infDl('iff-dl-bt',infBatalhoes())}</div>
+    <div><label>Companhia (área de atuação)</label><input id="iff-companhia" list="iff-dl-cp" value="${esc(p.companhia||'')}" ${dis}>${infDl('iff-dl-cp',infCompanhias())}</div>
     <div><label>Área operacional</label><input id="iff-area" list="iff-dl-a" value="${esc(p.area||'')}" ${dis}>${infDl('iff-dl-a',infAreas())}</div>
     <div class="if-g2"><label>Localização no mapa (lat, lng)</label><div style="display:flex;gap:6px"><input id="iff-lat" placeholder="lat" value="${esc(p.lat??'')}" ${dis}><input id="iff-lng" placeholder="lng" value="${esc(p.lng??'')}" ${dis}>
       ${ed?'<button class="btn secundario if-sm" id="iff-geo" type="button" style="white-space:nowrap">📍 Localizar / marcar</button>':''}</div></div>
@@ -4163,9 +4206,9 @@ function infFichaDados(c,p){
   document.getElementById('iff-salvar').onclick=async()=>{
     const g=k=>document.getElementById('iff-'+k).value;
     const d={id:p.id||undefined,nome:g('nome'),alcunha:g('alcunha'),nascimento:g('nascimento'),documento:g('documento'),mae:g('mae'),pai:g('pai'),sexo:g('sexo'),fisico:g('fisico'),telefone:g('telefone'),endereco:g('endereco'),bairro:g('bairro'),cidade:g('cidade'),area:g('area'),lat:g('lat'),lng:g('lng'),
-      faccao:g('faccao'),faccao_funcao:g('faccao_funcao'),nivel:g('nivel'),cargo:g('cargo'),status:g('status'),risco:g('risco'),crimes:INF_FICHA.sel.crimes,tags:g('tags').split(',').map(x=>x.trim()).filter(Boolean),obs:g('obs')};
+      faccao:g('faccao'),faccao_funcao:g('faccao_funcao'),batalhao:g('batalhao'),companhia:g('companhia'),rede:g('rede'),nivel:g('nivel'),cargo:g('cargo'),status:g('status'),risco:g('risco'),crimes:INF_FICHA.sel.crimes,tags:g('tags').split(',').map(x=>x.trim()).filter(Boolean),obs:g('obs')};
     const m=document.getElementById('iff-msg'); m.textContent='Salvando…';
-    try{ const r=await apiInf('infSalvar',{entidade:'pessoa',dados:d}); await infAposSalvar(r.registro.id,'dados'); infToast('Salvo.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; }
+    try{ const r=await apiInf('infSalvar',{entidade:'pessoa',dados:d}); if(!p.id && INF_CRIAR_CB){ const cb=INF_CRIAR_CB; INF_CRIAR_CB=null; infFecharFicha(); await infCarregar(); infRender(); infToast('Infrator cadastrado.'); cb(r.registro.id); return; } await infAposSalvar(r.registro.id,'dados'); infToast('Salvo.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; }
   };
 }
 // -- vinculos
@@ -4417,14 +4460,16 @@ async function infConfig(c){
    ${ta('ifc-niv','Níveis hierárquicos (número | nome) – 1 = topo',K.niveis.map(n=>n[0]+' | '+n[1]).join('\n'))}
    ${ta('ifc-vin','Tipos de vínculo (nome | 1 = hierárquico/subordinação)',K.vinculos.map(v=>v[0]+' | '+v[1]).join('\n'))}
    ${ta('ifc-loc','Tipos de local de atuação',K.locais.join('\n'))}
+   ${ta('ifc-bat','Batalhões',K.batalhoes.join('\n'))}${ta('ifc-cia','Companhias',K.companhias.join('\n'))}${ta('ifc-rede','Redes criminosas',K.redes.join('\n'))}
+   ${ta('ifc-gpap','Papéis na governança criminal (nome | nível: 1 = topo)',K.govPapeis.map(x=>x[0]+' | '+x[1]).join('\n'))}
    ${ta('ifc-bai','Bairros extras (além dos já usados e da lista da Carta de Situação)',(K.bairros||[]).join('\n'))}</div>
    ${ed?'<button class="btn" id="ifc-ok">💾 Salvar configurações</button> <span id="ifc-m" style="font-size:12px"></span>':''}
    ${isMaster()?'<hr><button class="btn secundario if-sm" id="ifc-log">📜 Ver registro de alterações (últimas 200)</button><div id="ifc-logbox"></div>':''}`;
   const L=id=>document.getElementById(id).value.split('\n').map(x=>x.trim()).filter(Boolean);
   const ok=document.getElementById('ifc-ok'); if(ok) ok.onclick=async()=>{
     const cat={ crimes:L('ifc-crimes').map(l=>{ const [n,p]=l.split('|').map(x=>x.trim()); return [n,Math.min(10,Math.max(1,parseInt(p)||5))]; }), faccoes:L('ifc-fac'), areas:L('ifc-area'),
-      niveis:L('ifc-niv').map(l=>{ const [n,t]=l.split('|').map(x=>x.trim()); return [parseInt(n)||1,t||'']; }), vinculos:L('ifc-vin').map(l=>{ const [n,s]=l.split('|').map(x=>x.trim()); return [n,s==='1'?1:0]; }), locais:L('ifc-loc'), bairros:L('ifc-bai') };
-    if(!cat.vinculos.length || !cat.crimes.length || !cat.niveis.length){ document.getElementById('ifc-m').textContent='Crimes, níveis e vínculos não podem ficar vazios.'; return; }
+      niveis:L('ifc-niv').map(l=>{ const [n,t]=l.split('|').map(x=>x.trim()); return [parseInt(n)||1,t||'']; }), vinculos:L('ifc-vin').map(l=>{ const [n,s]=l.split('|').map(x=>x.trim()); return [n,s==='1'?1:0]; }), locais:L('ifc-loc'), bairros:L('ifc-bai'), batalhoes:L('ifc-bat'), companhias:L('ifc-cia'), redes:L('ifc-rede'), govPapeis:L('ifc-gpap').map(l=>{ const [n,t]=l.split('|').map(x=>x.trim()); return [n,Math.min(9,Math.max(1,parseInt(t)||4))]; }) };
+    if(!cat.vinculos.length || !cat.crimes.length || !cat.niveis.length || !cat.govPapeis.length){ document.getElementById('ifc-m').textContent='Crimes, níveis e vínculos não podem ficar vazios.'; return; }
     try{ await apiInf('infConfigSalvar',{chave:'catalogos',valor:cat}); INF.cat=infMesclar(INF_DEF.catalogos,cat); INF.config.catalogos=cat; infRecalc(); infToast('Configurações salvas.'); infRender(); }catch(e){ document.getElementById('ifc-m').innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
   const lg=document.getElementById('ifc-log'); if(lg) lg.onclick=async()=>{ try{ const r=await apiInf('infLog'); document.getElementById('ifc-logbox').innerHTML=`<div class="if-tb" style="max-height:300px"><table><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>O quê</th></tr></thead><tbody>${r.log.map(x=>`<tr><td>${esc(fmtData(x.quando))}</td><td>${esc(x.usuario)}</td><td>${esc(x.acao)}</td><td>${esc(x.entidade)} ${esc(x.resumo||'')}</td></tr>`).join('')}</tbody></table></div>`; }catch(e){ infToast(e.message,true); } };
 }
@@ -4639,6 +4684,305 @@ function infFichaDdu(c,p){
     try{ const proto=g('p').replace(/\s+/g,''); if(!proto) throw new Error('Informe o número do DDU');
       let dd=INF.ddus.find(x=>x.protocolo===proto); if(!dd){ const r=await apiInf('infSalvar',{entidade:'ddu',dados:{protocolo:proto,data_criacao:g('d'),natureza_desc:g('n'),relato:g('r'),status:'Registro manual'}}); dd=r.registro; }
       await apiInf('infSalvar',{entidade:'ddu_pessoa',dados:{ddu_id:dd.id,pessoa_id:p.id,papel:'denunciado'}}); await infAposSalvar(p.id,'ddu'); infToast('DDU registrado e vinculado.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+}
+
+
+// ================= GOVERNANCA CRIMINAL + ALVO PRIORITARIO =================
+function infRedes(){ const s=new Set(INF.cat.redes||[]); INF.pessoas.forEach(p=>{ if(p.rede) s.add(p.rede); }); INF.gov.forEach(g=>{ if(g.rede) s.add(g.rede); }); return [...s].sort(); }
+function infBatalhoes(){ const s=new Set(INF.cat.batalhoes||[]); INF.pessoas.forEach(p=>{ if(p.batalhao) s.add(p.batalhao); }); INF.gov.forEach(g=>{ if(g.batalhao) s.add(g.batalhao); }); return [...s].sort(); }
+function infCompanhias(){ const s=new Set(INF.cat.companhias||[]); INF.pessoas.forEach(p=>{ if(p.companhia) s.add(p.companhia); }); INF.gov.forEach(g=>{ if(g.companhia) s.add(g.companhia); }); return [...s].sort((a,b)=>parseInt(a)-parseInt(b)||a.localeCompare(b)); }
+function infRegioes(){ return [...new Set(INF.gov.map(g=>g.regiao).filter(Boolean))].sort(); }
+function infPapelNivel(n){ const x=(INF.cat.govPapeis||[]).find(a=>a[0]===n); return x?x[1]:9; }
+const INF_PES_CAMPOS=['nome','alcunha','nascimento','documento','mae','pai','sexo','fisico','telefone','endereco','bairro','cidade','area','lat','lng','faccao','faccao_funcao','nivel','cargo','status','risco','crimes','tags','obs','batalhao','companhia','rede'];
+async function infPessoaPatch(p, patch){ const d={id:p.id}; INF_PES_CAMPOS.forEach(k=>{ d[k]=p[k]; }); Object.assign(d,patch); return apiInf('infSalvar',{entidade:'pessoa',dados:d}); }
+
+// ---------- seletor de infrator (escolher existente ou cadastrar novo) ----------
+function infEscolherInfrator(titulo, cb, excluirIds){
+  let ov=document.getElementById('inf-pick'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='inf-pick'; ov.className='if-ov'; ov.style.zIndex=9300; document.body.appendChild(ov);
+  const ex=new Set(excluirIds||[]);
+  ov.innerHTML=`<div class="if-ovbox" style="width:min(640px,98vw)"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">${esc(titulo||'Escolher infrator')}</h3><button class="btn secundario if-sm" id="ifp-x">✖</button></div>
+   <p style="font-size:12px;color:#555;margin:6px 0">O cadastro do infrator é único: escolha alguém já cadastrado ou crie um novo aqui — ele passa a existir em todo o módulo P2.</p>
+   <input id="ifp-q" placeholder="Digite nome, alcunha, documento ou nome da mãe…" style="width:100%" autofocus>
+   <div id="ifp-l" style="max-height:340px;overflow:auto;margin-top:8px"></div>
+   ${INF.podeEditar?'<div style="margin-top:10px"><button class="btn dourado" id="ifp-novo">＋ Cadastrar novo infrator</button></div>':''}</div>`;
+  const fechar=()=>ov.remove();
+  const lista=()=>{ const q=infNorm(document.getElementById('ifp-q').value).trim(); const L=INF.pessoas.filter(p=>!ex.has(p.id)&&(!q||infNorm([p.nome,p.alcunha,p.documento,p.mae].join(' ')).includes(q))).slice(0,40);
+    document.getElementById('ifp-l').innerHTML=L.map(p=>`<div class="if-ln" data-pick="${p.id}" style="cursor:pointer"><b>${esc(p.nome)}</b>${p.alcunha?` “${esc(p.alcunha)}”`:''} ${infBadge(p.status)} <span style="color:#777">${esc([p.bairro,p.rede||p.faccao].filter(Boolean).join(' · '))}</span></div>`).join('')||'<p style="color:#888;font-size:12.5px">Ninguém encontrado. Use “Cadastrar novo infrator”.</p>'; };
+  document.getElementById('ifp-q').oninput=lista; lista();
+  ov.onclick=e=>{ const x=e.target.closest('[data-pick]'); if(x){ fechar(); cb(+x.dataset.pick); } };
+  document.getElementById('ifp-x').onclick=fechar;
+  const nv=document.getElementById('ifp-novo'); if(nv) nv.onclick=()=>{ fechar(); INF_CRIAR_CB=cb; infFicha(null); { const fi=document.getElementById('inf-ficha'); if(fi) fi.style.zIndex=9400; } infToast('Preencha os dados e salve: o infrator será usado automaticamente.'); };
+  setTimeout(()=>{ const q=document.getElementById('ifp-q'); if(q) q.focus(); },30);
+}
+
+// ---------- pontuacao: alvo prioritario ----------
+const ALVO_CAMPOS={
+  status:{l:'Situação é…',t:'status',f:(p,v)=>p.status===v?1:0},
+  nivel:{l:'Nível hierárquico é…',t:'nivel',f:(p,v)=>String(p.nivel||'')===String(v)?1:0},
+  nivel_ate:{l:'Nível hierárquico até… (1 = topo)',t:'nivel',f:(p,v)=>p.nivel&&p.nivel<=+v?1:0},
+  faccao:{l:'Pertence à facção…',t:'faccao',f:(p,v)=>v?(p.faccao===v?1:0):(p.faccao?1:0)},
+  rede:{l:'Rede criminosa…',t:'rede',f:(p,v)=>v?(p.rede===v||(INF.cache.govP.get(p.id)||[]).some(g=>g.rede===v)?1:0):((p.rede||(INF.cache.govP.get(p.id)||[]).length)?1:0)},
+  batalhao:{l:'Batalhão…',t:'batalhao',f:(p,v)=>v?(p.batalhao===v||(INF.cache.govP.get(p.id)||[]).some(g=>g.batalhao===v)?1:0):(p.batalhao?1:0)},
+  companhia:{l:'Companhia…',t:'companhia',f:(p,v)=>v?(p.companhia===v||(INF.cache.govP.get(p.id)||[]).some(g=>g.companhia===v)?1:0):(p.companhia?1:0)},
+  bairro:{l:'Mora/atua no bairro…',t:'bairro',f:(p,v)=>v?(p.bairro===v||(INF.cache.govP.get(p.id)||[]).some(g=>(g.bairros||[]).includes(v))?1:0):(p.bairro?1:0)},
+  area:{l:'Área operacional…',t:'area',f:(p,v)=>v?(p.area===v?1:0):(p.area?1:0)},
+  gov_papel:{l:'Papel na governança criminal…',t:'papel',f:(p,v)=>(INF.cache.govP.get(p.id)||[]).filter(g=>!v||g.papel===v).length},
+  gov_nivel_ate:{l:'Papel na governança de nível até… (1 = topo)',t:'nivel',f:(p,v)=>(INF.cache.govP.get(p.id)||[]).some(g=>infPapelNivel(g.papel)<=+v)?1:0},
+  crime_perfil:{l:'Tem no perfil o crime…',t:'crime',f:(p,v)=>{ const k=Object.keys(infCrimesDe(p)); return v?(k.includes(v)?1:0):(k.length?1:0); }},
+  crime_reg:{l:'Registros de crime… (por ocorrência)',t:'crime',f:(p,v)=>(INF.cache.regs.get(p.id)||[]).filter(r=>!v||r.crime===v).length},
+  vinculos:{l:'Nº de vínculos',t:'none',f:p=>(INF.cache.adj.get(p.id)||[]).length},
+  subordinados:{l:'Nº de subordinados',t:'none',f:p=>INF.cache.sub.get(p.id)||0},
+  ddus:{l:'Nº de denúncias (DDU)',t:'none',f:p=>(INF.cache.ddusDe.get(p.id)||[]).length},
+  locais:{l:'Nº de locais de atuação',t:'none',f:p=>(INF.cache.locs.get(p.id)||[]).length},
+  risco:{l:'Risco (1–5) a partir de…',t:'num',f:(p,v)=>(p.risco||1)>=+v?(p.risco||1):0},
+  tag:{l:'Etiqueta contém…',t:'text',f:(p,v)=>v&&(p.tags||[]).some(t=>infNorm(t).includes(infNorm(v)))?1:0},
+  tem_mapa:{l:'Tem endereço no mapa',t:'none',f:p=>p.lat&&p.lng?1:0},
+  tem_doc:{l:'Tem CPF/RG',t:'none',f:p=>p.documento?1:0},
+  tem_tel:{l:'Tem telefone',t:'none',f:p=>p.telefone?1:0}
+};
+function infAlvoRegraTxt(r){ const c=ALVO_CAMPOS[r.c]; if(!c) return r.c; const nv=INF.cat.niveis.find(n=>String(n[0])===String(r.v)); const val=c.t==='none'?'':(c.t==='nivel'&&nv?(' '+r.v+' – '+nv[1]):(r.v?' '+r.v:(c.t==='num'?'':' (qualquer)'))); return c.l.replace('…','')+(c.t==='none'?'':':')+val; }
+function infAlvo(){
+  const C=INF.cache; if(C.alvoSc) return C.alvoSc;
+  const cfg=INF.alvoCfg; const regras=cfg.regras.filter(r=>r.on!==false&&ALVO_CAMPOS[r.c]); const out=new Map();
+  INF.pessoas.forEach(p=>{
+    const sel=C.alvoP.get(p.id); let quant=0, qual=0; const hits=[];
+    regras.forEach(r=>{ const esc2=r.esc==='sel'?'sel':'todos'; if(esc2==='sel'&&!sel) return; const n=ALVO_CAMPOS[r.c].f(p,r.v); if(!(n>0)) return;
+      let pts=r.modo==='unidade'?(+r.pts||0)*n:(+r.pts||0); if(+r.max>0&&pts>+r.max) pts=+r.max; if(!pts) return;
+      if(esc2==='sel') qual+=pts; else quant+=pts; hits.push({txt:infAlvoRegraTxt(r)+(r.modo==='unidade'?` × ${n}`:''),pts,esc:esc2}); });
+    let sensorPts=0; if(sel){ sensorPts=(+sel.sensor||0)*cfg.sensorPeso; qual+=sensorPts; if(sensorPts) hits.push({txt:`Pontuação sensor ${sel.sensor}/10 × ${cfg.sensorPeso}`,pts:sensorPts,esc:'sel'}); }
+    out.set(p.id,{quant:Math.round(quant*10)/10,qual:Math.round(qual*10)/10,total:Math.round((quant+qual)*10)/10,sel:!!sel,sensor:sel?+sel.sensor:null,hits});
+  });
+  const rank=(arr,key)=>{ const L=arr.slice().sort((a,b)=>(out.get(b)[key]-out.get(a)[key])||(out.get(b).total-out.get(a).total)); let pos=0,prev=null,i=0; L.forEach(id=>{ i++; const v=out.get(id)[key]; if(v!==prev){ pos=i; prev=v; } out.get(id)['pos_'+key]=pos; }); return L.length; };
+  const all=INF.pessoas.map(p=>p.id), sels=all.filter(id=>out.get(id).sel);
+  const nG=rank(all,'total'), nQ=rank(all,'quant'), nS=rank(sels,'qual');
+  out.forEach(v=>{ v.posGeral=v.pos_total; v.posQuant=v.pos_quant; v.posQual=v.sel?v.pos_qual:null; v.nGeral=nG; v.nQuant=nQ; v.nQual=nS; });
+  C.alvoSc=out; return out;
+}
+function infAlvoPosHtml(id){ const a=infAlvo().get(id); if(!a) return '—'; return `<span title="Pontos: ${a.total} (quant. ${a.quant} + qual. ${a.qual})${a.sel?' · selecionado para análise qualitativa':''}"><b>#${a.posGeral}</b>${a.sel?' <span style="color:#a4202a">★</span>':''}</span>`; }
+
+// ---------- aba GOVERNANCA CRIMINAL ----------
+function infGovLinhas(){
+  const G=INF.G; const q=infNorm(G.busca);
+  return INF.gov.map(g=>({g,p:INF.cache.byId.get(g.pessoa_id)})).filter(x=>x.p).filter(({g,p})=>{
+    const rede=g.rede||p.rede||p.faccao||''; const bt=g.batalhao||p.batalhao||''; const cia=g.companhia||p.companhia||'';
+    if(G.rede&&rede!==G.rede) return false; if(G.batalhao&&bt!==G.batalhao) return false; if(G.companhia&&cia!==G.companhia) return false;
+    if(G.regiao&&g.regiao!==G.regiao) return false; if(G.papel&&g.papel!==G.papel) return false; if(G.status&&p.status!==G.status) return false;
+    if(G.bairro&&!(g.bairros||[]).includes(G.bairro)&&p.bairro!==G.bairro) return false;
+    if(q&&!infNorm([p.nome,p.alcunha,p.documento,g.regiao,(g.bairros||[]).join(' '),g.papel].join(' ')).includes(q)) return false;
+    return true; }).map(({g,p})=>({g,p,rede:g.rede||p.rede||p.faccao||'Sem rede definida',bt:g.batalhao||p.batalhao||'',cia:g.companhia||p.companhia||'',nv:infPapelNivel(g.papel)}));
+}
+function infGovCard(x,peq){ const p=x.p; const a=infAlvo().get(p.id); const cor=INF_STCOR[p.status]||'#999';
+  return `<div class="gv-card ${x.nv<=3?'lider':''}" style="--c:${cor}" data-gpid="${p.id}" title="${esc(p.nome)}${p.documento?' · '+esc(p.documento):''}"><b>${esc(p.alcunha||infCurto(p))}</b><small>${esc(p.nome)}</small>${p.documento?`<small>${esc(p.documento)}</small>`:''}<small>${esc(x.g.papel)}</small><span class="if-b" style="background:${cor};margin-top:3px">${esc(INF_STATUS[p.status]||p.status)}</span>${a?` <span class="gv-pt" title="Posição no ranking de alvos">🎯 #${a.posGeral}</span>`:''}</div>`; }
+function infGovOrgHtml(L){
+  if(!L.length) return '<p style="color:#888;font-size:13px">Ninguém na governança com esses filtros. Use “＋ Incluir na governança”.</p>';
+  const porRede={}; L.forEach(x=>{ (porRede[x.rede]=porRede[x.rede]||[]).push(x); });
+  return Object.keys(porRede).sort().map(rede=>{
+    const R=porRede[rede]; const top=R.filter(x=>x.nv<=1), cons=R.filter(x=>x.nv===2), base=R.filter(x=>x.nv>=3);
+    const regs={}; base.forEach(x=>{ const k=(x.bt||'—')+'|'+(x.g.regiao||'(sem região)'); (regs[k]=regs[k]||[]).push(x); });
+    const ordR=Object.keys(regs).sort((a,b)=>{ const [ba]=a.split('|'), [bb]=b.split('|'); return ba.localeCompare(bb)||(parseInt(regs[a][0].cia)||0)-(parseInt(regs[b][0].cia)||0)||a.localeCompare(b); });
+    let bt=null; const regHtml=ordR.map(k=>{ const M=regs[k], f=M[0]; const bairros=[...new Set(M.flatMap(x=>x.g.bairros||[]))]; const lid=M.filter(x=>x.nv===3), dis=M.filter(x=>x.nv!==3);
+      const cab=(f.bt!==bt)?(bt=f.bt,`<div class="gv-bt">${esc(f.bt||'Batalhão não informado')}</div>`):'';
+      return `${cab}<div class="gv-reg"><h4>${esc(f.g.regiao||'(sem região)')}</h4><div class="meta">${f.cia?esc(f.cia)+' · ':''}${bairros.length?esc(bairros.join(' – ')):''}</div>
+        ${lid.length?`<div class="gv-lbl">Líder local</div><div class="gv-tier first">${lid.map(x=>infGovCard(x)).join('')}</div>`:''}
+        ${dis.length?`<div class="gv-lbl">Disciplina / conselho</div><div class="disc">${dis.map(x=>infGovCard(x)).join('')}</div>`:''}</div>`; }).join('');
+    return `<div class="gv-rede"><h3>🕸️ ${esc(rede)} — Juiz de Fora <span style="font-weight:400;font-size:12px;color:#666">(${R.length} integrantes)</span></h3>
+      ${top.length?`<div class="gv-lbl">Liderança geral</div><div class="gv-tier first">${top.map(x=>infGovCard(x)).join('')}</div>`:''}
+      ${cons.length?`<div class="gv-lbl">Conselho permanente / disciplina geral</div><div class="gv-tier ${top.length?'':'first'}">${cons.map(x=>infGovCard(x)).join('')}</div>`:''}
+      ${regHtml?`<div class="gv-lbl">Lideranças e disciplinas por território</div><div class="gv-tier ${top.length||cons.length?'':'first'} gv-regs">${regHtml}</div>`:''}</div>`; }).join('');
+}
+function infGovTab(c){
+  const G=INF.G, ed=INF.podeEditar; const L=infGovLinhas();
+  const sel=(id,ops,val,todos)=>`<select id="${id}"><option value="">${todos}</option>${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(val)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
+  const bairrosG=[...new Set([...INF.gov.flatMap(g=>g.bairros||[]),...INF.pessoas.filter(p=>(INF.cache.govP.get(p.id)||[]).length).map(p=>p.bairro).filter(Boolean)])].sort();
+  c.innerHTML=`<div class="if-box"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">🏛️ Governança criminal — organograma das lideranças</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${ed?'<button class="btn if-sm" id="gv-add">＋ Incluir na governança</button>':''}<button class="btn secundario if-sm" id="gv-print">🖨️ Imprimir organograma</button></div></div>
+   <p style="font-size:12px;color:#555;margin:6px 0">Clique em qualquer pessoa para abrir a ficha completa. O infrator é sempre o do cadastro único (nada é duplicado). Papéis, batalhões, companhias e redes são editáveis em ⚙️ Configurações.</p>
+   <div class="if-fil" style="box-shadow:none;border:1px solid #e3dcc0">
+    <div style="flex:1;min-width:170px"><label>Busca</label><input id="gvf-busca" value="${esc(G.busca)}" placeholder="nome, vulgo, RG, região, bairro"></div>
+    <div><label>Rede criminosa</label>${sel('gvf-rede',infRedes(),G.rede,'Todas')}</div><div><label>Batalhão</label>${sel('gvf-batalhao',infBatalhoes(),G.batalhao,'Todos')}</div>
+    <div><label>Companhia</label>${sel('gvf-companhia',infCompanhias(),G.companhia,'Todas')}</div><div><label>Bairro</label>${sel('gvf-bairro',bairrosG,G.bairro,'Todos')}</div>
+    <div><label>Região / território</label>${sel('gvf-regiao',infRegioes(),G.regiao,'Todas')}</div><div><label>Papel</label>${sel('gvf-papel',INF.cat.govPapeis.map(x=>x[0]),G.papel,'Todos')}</div>
+    <div><label>Situação</label>${sel('gvf-status',Object.entries(INF_STATUS),G.status,'Todas')}</div>
+    <div><label>Visualização</label>${sel('gvf-view',[['org','Organograma'],['lista','Lista']],G.view,'').replace('<option value=""></option>','')}</div>
+    <div><button class="btn secundario if-sm" id="gvf-limpar">Limpar</button></div></div>
+   <div style="font-size:12px;color:#666;margin:6px 0"><b>${L.length}</b> integrantes · ${new Set(L.map(x=>x.p.id)).size} pessoas</div>
+   <div class="gv-wrap" id="gv-corpo">${G.view==='lista'?infGovLista(L):infGovOrgHtml(L)}</div></div>`;
+  let tb; const bind=(id,k)=>{ const e=document.getElementById(id); if(!e) return; e.addEventListener('input',()=>{ clearTimeout(tb); tb=setTimeout(()=>{ G[k]=e.value; infGovTab(c); const q=document.getElementById('gvf-busca'); if(k==='busca'&&q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); } },k==='busca'?300:0); }); };
+  [['gvf-busca','busca'],['gvf-rede','rede'],['gvf-batalhao','batalhao'],['gvf-companhia','companhia'],['gvf-bairro','bairro'],['gvf-regiao','regiao'],['gvf-papel','papel'],['gvf-status','status'],['gvf-view','view']].forEach(([i,k])=>bind(i,k));
+  document.getElementById('gvf-limpar').onclick=()=>{ Object.assign(G,{busca:'',rede:'',batalhao:'',companhia:'',bairro:'',regiao:'',papel:'',status:''}); infGovTab(c); };
+  c.querySelectorAll('[data-gpid]').forEach(e=>e.onclick=()=>infFicha(+e.dataset.gpid,'gov'));
+  c.querySelectorAll('tr[data-gpid2]').forEach(e=>e.onclick=()=>infFicha(+e.dataset.gpid2,'gov'));
+  const ad=document.getElementById('gv-add'); if(ad) ad.onclick=()=>infGovForm(null,null);
+  document.getElementById('gv-print').onclick=()=>infGovImprimir(L);
+}
+function infGovLista(L){
+  const ord=L.slice().sort((a,b)=>a.rede.localeCompare(b.rede)||a.nv-b.nv||(a.g.regiao||'').localeCompare(b.g.regiao||'')||a.p.nome.localeCompare(b.p.nome));
+  return `<div class="if-tb"><table><thead><tr><th>Pessoa</th><th>Papel</th><th>Região</th><th>Companhia</th><th>Batalhão</th><th>Rede</th><th>Bairros</th><th>Situação</th><th>Alvo #</th></tr></thead><tbody>${ord.map(x=>`<tr class="cl" data-gpid2="${x.p.id}"><td><b>${esc(x.p.nome)}</b>${x.p.alcunha?`<div style="color:#777">“${esc(x.p.alcunha)}”</div>`:''}</td><td>${esc(x.g.papel)}</td><td>${esc(x.g.regiao||'')}</td><td>${esc(x.cia)}</td><td>${esc(x.bt)}</td><td>${esc(x.rede)}</td><td>${esc((x.g.bairros||[]).join(', '))}</td><td>${infBadge(x.p.status)}</td><td>${infAlvoPosHtml(x.p.id)}</td></tr>`).join('')||'<tr><td colspan="9" style="color:#888">Nada com esses filtros.</td></tr>'}</tbody></table></div>`;
+}
+function infGovImprimir(L){
+  let ov=document.getElementById('inf-overlay'); if(ov) ov.remove();
+  const f=INF.G; const filt=[f.rede&&'Rede: '+f.rede,f.batalhao&&'Batalhão: '+f.batalhao,f.companhia&&'Cia: '+f.companhia,f.bairro&&'Bairro: '+f.bairro,f.regiao&&'Região: '+f.regiao,f.papel&&'Papel: '+f.papel,f.status&&'Situação: '+INF_STATUS[f.status]].filter(Boolean).join(' · ');
+  ov=document.createElement('div'); ov.id='inf-overlay'; ov.className='ov-print';
+  ov.innerHTML=`<div class="nao-imprimir" style="position:sticky;top:0;z-index:2;background:#222;padding:10px;display:flex;gap:10px;justify-content:center"><button class="btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><button class="btn secundario" onclick="infFecharOverlay()">✖ Voltar</button><span style="color:#ccc;font-size:12px;align-self:center">Escolha “Salvar como PDF”, papel A3 paisagem.</span></div>
+   <div class="if-folha gv-folha" style="width:auto;min-height:0;margin:10px"><h1>GOVERNANÇA CRIMINAL – ORGANOGRAMA DAS LIDERANÇAS (JUIZ DE FORA)</h1><div class="sg">DOCUMENTO SIGILOSO – USO RESTRITO</div><div style="text-align:center;font-size:9pt;margin-bottom:6pt">${esc(filt||'Sem filtros')} · ${L.length} integrantes · gerado em ${new Date().toLocaleString('pt-BR')} por ${esc(ST.usuario.nome)}</div>${infGovOrgHtml(L)}</div>`;
+  document.body.appendChild(ov); printPagina('size:A3 landscape;margin:8mm');
+}
+// formulario de participacao na governanca
+function infGovForm(gid, pessoaId){
+  const g=gid?INF.gov.find(x=>x.id===gid):null; let pid=g?g.pessoa_id:pessoaId||null;
+  let ov=document.getElementById('inf-gform'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='inf-gform'; ov.className='if-ov'; ov.style.zIndex=9200; document.body.appendChild(ov);
+  const pes=()=>pid?INF.cache.byId.get(pid):null;
+  const dl=(id,a)=>`<datalist id="${id}">${a.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
+  const draw=()=>{ const p=pes(); const d=g||{};
+    ov.innerHTML=`<div class="if-ovbox" style="width:min(720px,98vw)"><div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">${g?'Editar':'Incluir na'} governança criminal</h3><button class="btn secundario if-sm" id="gf-x">✖</button></div>
+     <div class="if-grid" style="margin-top:8px"><div class="if-g2" style="grid-column:1/-1"><label>Infrator (cadastro único)</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${p?`<b>${esc(infNomeExib(p))}</b> ${infBadge(p.status)}`:'<span style="color:#a4202a">Nenhum selecionado</span>'}${g?'':'<button class="btn secundario if-sm" id="gf-pick">'+(p?'Trocar':'Selecionar / cadastrar novo')+'</button>'}</div></div>
+      <div><label>Papel na governança *</label><select id="gf-papel">${INF.cat.govPapeis.map(x=>`<option ${(d.papel||'Líder local')===x[0]?'selected':''}>${esc(x[0])}</option>`).join('')}</select></div>
+      <div><label>Região / território (ex.: Vila Ideal – Olavo Costa)</label><input id="gf-regiao" list="gf-dr" value="${esc(d.regiao||'')}">${dl('gf-dr',infRegioes())}</div>
+      <div><label>Rede criminosa</label><input id="gf-rede" list="gf-dre" value="${esc(d.rede||(p&&(p.rede||p.faccao))||'')}">${dl('gf-dre',infRedes())}</div>
+      <div><label>Batalhão</label><input id="gf-bt" list="gf-dbt" value="${esc(d.batalhao||(p&&p.batalhao)||'')}">${dl('gf-dbt',infBatalhoes())}</div>
+      <div><label>Companhia</label><input id="gf-cia" list="gf-dcia" value="${esc(d.companhia||(p&&p.companhia)||'')}">${dl('gf-dcia',infCompanhias())}</div>
+      <div class="if-g2" style="grid-column:1/-1"><label>Bairros do território (separe por vírgula)</label><input id="gf-bai" list="gf-dbai" value="${esc((d.bairros||[]).join(', '))}">${dl('gf-dbai',infBairros())}</div>
+      <div style="grid-column:1/-1"><label>Observações</label><textarea id="gf-obs" rows="2">${esc(d.obs||'')}</textarea></div></div>
+     <div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button class="btn" id="gf-ok">💾 Salvar</button>${g?'<button class="btn perigo if-sm" id="gf-del">Remover da governança</button>':''}<span id="gf-m" style="font-size:12px"></span></div></div>`;
+    document.getElementById('gf-x').onclick=()=>ov.remove();
+    const pk=document.getElementById('gf-pick'); if(pk) pk.onclick=()=>infEscolherInfrator('Quem entra na governança?',id=>{ pid=id; draw(); });
+    const dd=document.getElementById('gf-del'); if(dd) dd.onclick=async()=>{ if(!confirm('Remover esta participação? O cadastro do infrator não é afetado.')) return; try{ await apiInf('infExcluir',{entidade:'gov',id:g.id}); ov.remove(); await infAposSalvar(g.pessoa_id,INF_FICHA.aba==='gov'&&document.getElementById('inf-ficha')?'gov':'dados'); infToast('Removido da governança.'); }catch(e){ document.getElementById('gf-m').innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+    document.getElementById('gf-ok').onclick=async()=>{ const m=document.getElementById('gf-m'); if(!pid){ m.innerHTML='<span style="color:#a4202a">Selecione o infrator.</span>'; return; }
+      const v=i=>document.getElementById(i).value.trim(); const dados={id:g?g.id:undefined,pessoa_id:pid,papel:v('gf-papel'),regiao:v('gf-regiao'),rede:v('gf-rede'),batalhao:v('gf-bt'),companhia:v('gf-cia'),bairros:v('gf-bai').split(',').map(x=>x.trim()).filter(Boolean),obs:v('gf-obs')};
+      m.textContent='Salvando…';
+      try{ await apiInf('infSalvar',{entidade:'gov',dados});
+        const p2=INF.cache.byId.get(pid); const patch={}; if(p2&&!p2.rede&&dados.rede) patch.rede=dados.rede; if(p2&&!p2.batalhao&&dados.batalhao) patch.batalhao=dados.batalhao; if(p2&&!p2.companhia&&dados.companhia) patch.companhia=dados.companhia;
+        if(p2&&Object.keys(patch).length) await infPessoaPatch(p2,patch);
+        ov.remove(); await infCarregar(); infRender(); if(document.getElementById('inf-ficha')) infFicha(pid,'gov'); infToast('Governança atualizada.'); }
+      catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+  };
+  draw();
+  if(!pid&&!g) setTimeout(()=>{ const pk=document.getElementById('gf-pick'); if(pk) pk.click(); },50);
+}
+// ---------- ficha: aba Governanca ----------
+function infFichaGov(c,p){
+  const ed=INF.podeEditar; const L=INF.cache.govP.get(p.id)||[];
+  c.innerHTML=`<div class="if-grid" style="margin-bottom:8px"><div><label>Rede criminosa</label><div><b>${esc(p.rede||'—')}</b></div></div><div><label>Batalhão</label><div><b>${esc(p.batalhao||'—')}</b></div></div><div><label>Companhia</label><div><b>${esc(p.companhia||'—')}</b></div></div><div><label>Bairro (residência)</label><div><b>${esc(p.bairro||'—')}</b></div></div></div>
+   <div class="if-box"><h3>Participação na governança criminal</h3>${L.map(g=>`<div class="if-ln"><span class="if-b" style="background:#6b4c9a">${esc(g.papel)}</span><b>${esc(g.regiao||'(sem região)')}</b><span style="color:#666">${esc([g.companhia,g.batalhao,g.rede].filter(Boolean).join(' · '))}</span>${(g.bairros||[]).length?`<span style="color:#777">· ${esc(g.bairros.join(', '))}</span>`:''}${g.obs?`<span style="color:#777">· ${esc(g.obs)}</span>`:''}${ed?`<button class="btn secundario if-sm" data-ge="${g.id}" style="margin-left:auto">Editar</button>`:''}</div>`).join('')||'<p style="color:#888;font-size:13px">Não consta no organograma da governança criminal.</p>'}
+   ${ed?'<div style="margin-top:8px"><button class="btn if-sm" id="fg-add">＋ Incluir na governança</button></div>':''}</div>
+   <p style="font-size:12px;color:#777">Batalhão, companhia e rede também são editáveis na aba “Dados”.</p>`;
+  c.querySelectorAll('[data-ge]').forEach(b=>b.onclick=()=>infGovForm(+b.dataset.ge,null));
+  const a=document.getElementById('fg-add'); if(a) a.onclick=()=>infGovForm(null,p.id);
+}
+// ---------- ficha: aba Alvo prioritario ----------
+function infAlvoDetalheHtml(a){ return `<div class="if-tb" style="max-height:260px"><table><thead><tr><th>Critério</th><th>Tipo</th><th style="text-align:right">Pontos</th></tr></thead><tbody>${a.hits.map(h=>`<tr><td>${esc(h.txt)}</td><td>${h.esc==='sel'?'qualitativo':'quantitativo'}</td><td style="text-align:right"><b>${h.pts>0?'+':''}${h.pts.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td></tr>`).join('')||'<tr><td colspan="3" style="color:#888">Nenhum critério pontuado.</td></tr>'}</tbody></table></div>`; }
+function infFichaAlvo(c,p){
+  const ed=INF.podeEditar; const a=infAlvo().get(p.id); const sel=INF.cache.alvoP.get(p.id);
+  c.innerHTML=`<div class="if-kpis"><div class="if-kpi"><b>#${a.posGeral} <span style="font-size:12px;color:#777">de ${a.nGeral}</span></b><span>Posição geral (${a.total} pts)</span></div><div class="if-kpi"><b>#${a.posQuant} <span style="font-size:12px;color:#777">de ${a.nQuant}</span></b><span>Quantitativo (${a.quant} pts)</span></div><div class="if-kpi"><b>${a.sel?'#'+a.posQual+' <span style="font-size:12px;color:#777">de '+a.nQual+'</span>':'—'}</b><span>Qualitativo ${a.sel?'('+a.qual+' pts)':'(não selecionado)'}</span></div><div class="if-kpi"><b>${a.sel?a.sensor+'/10':'—'}</b><span>Pontuação sensor</span></div></div>
+   <div class="if-box"><h3>Análise qualitativa</h3>${sel?`<div class="if-grid"><div><label>Pontuação sensor (0 a 10)</label><input id="fa-s" type="number" min="0" max="10" step="0.5" value="${sel.sensor}" ${ed?'':'disabled'}></div><div class="if-g2"><label>Justificativa / observação do analista</label><input id="fa-o" value="${esc(sel.obs||'')}" ${ed?'':'disabled'}></div></div>
+      <div style="font-size:11px;color:#888;margin-top:4px">Selecionado por ${esc(sel.criado_por||'?')} em ${esc(fmtData(sel.criado_em))}${sel.atualizado_por?` · última alteração por ${esc(sel.atualizado_por)} em ${esc(fmtData(sel.atualizado_em))}`:''}</div>
+      ${ed?'<div style="margin-top:8px;display:flex;gap:8px"><button class="btn if-sm" id="fa-ok">💾 Salvar</button><button class="btn perigo if-sm" id="fa-rm">Retirar da análise qualitativa</button><span id="fa-m" style="font-size:12px;align-self:center"></span></div>':''}`
+     :`<p style="font-size:13px;color:#555;margin:0 0 8px">Este infrator ainda não foi selecionado para a análise qualitativa. Ao selecionar, atribua a pontuação sensor (0 a 10).</p>${ed?`<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><div><label style="font-size:11px">Pontuação sensor (0 a 10) *</label><input id="fa-s" type="number" min="0" max="10" step="0.5" placeholder="0 a 10" style="width:120px"></div><div style="flex:1;min-width:200px"><label style="font-size:11px">Justificativa</label><input id="fa-o"></div><button class="btn if-sm" id="fa-ok">⭐ Selecionar para análise qualitativa</button></div><span id="fa-m" style="font-size:12px"></span>`:''}`}</div>
+   <div class="if-box"><h3>De onde vêm os pontos</h3>${infAlvoDetalheHtml(a)}</div>`;
+  const ok=document.getElementById('fa-ok'); if(ok) ok.onclick=async()=>{ const m=document.getElementById('fa-m'); const s=document.getElementById('fa-s').value; if(s===''||isNaN(+s)||+s<0||+s>10){ m.innerHTML='<span style="color:#a4202a">Informe a pontuação sensor entre 0 e 10.</span>'; return; }
+    try{ await apiInf('infSalvar',{entidade:'alvo',dados:{id:sel?sel.id:undefined,pessoa_id:p.id,sensor:+s,obs:document.getElementById('fa-o').value}}); await infAposSalvar(p.id,'alvo'); infToast('Análise qualitativa salva.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+  const rm=document.getElementById('fa-rm'); if(rm) rm.onclick=async()=>{ if(!confirm('Retirar da análise qualitativa? O cadastro do infrator não é afetado.')) return; try{ await apiInf('infExcluir',{entidade:'alvo',id:sel.id}); await infAposSalvar(p.id,'alvo'); infToast('Retirado.'); }catch(e){ infToast(e.message,true); } };
+}
+// ---------- aba ALVO PRIORITARIO ----------
+function infAlvoTab(c){
+  const A=INF.A; const subs=[['rank','🏅 Ranking'],['sel','⭐ Análise qualitativa'],['regras','⚙️ Regras de pontuação (administrativo)']];
+  c.innerHTML=`<div class="if-tabs">${subs.map(([k,l])=>`<span class="if-tab ${A.sub===k?'on':''}" data-as="${k}">${l}</span>`).join('')}</div><div id="al-corpo"></div>`;
+  c.querySelectorAll('[data-as]').forEach(e=>e.onclick=()=>{ A.sub=e.dataset.as; infAlvoTab(c); });
+  const b=document.getElementById('al-corpo'); ({rank:infAlvoRank,sel:infAlvoSel,regras:infAlvoRegras})[A.sub](b);
+}
+function infAlvoRank(b){
+  const A=INF.A; const S=infAlvo();
+  const sel=(id,ops,val,todos)=>`<select id="${id}"><option value="">${todos}</option>${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(val)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
+  const chave={geral:'total',quant:'quant',qual:'qual'}[A.modo]; const q=infNorm(A.busca);
+  let L=INF.pessoas.filter(p=>{ const a=S.get(p.id); if(A.modo==='qual'&&!a.sel) return false; if(A.soSel&&!a.sel) return false; if(A.status&&p.status!==A.status) return false;
+    const gl=INF.cache.govP.get(p.id)||[]; if(A.rede&&(p.rede||'')!==A.rede&&!gl.some(g=>g.rede===A.rede)) return false; if(A.batalhao&&(p.batalhao||'')!==A.batalhao&&!gl.some(g=>g.batalhao===A.batalhao)) return false; if(A.companhia&&(p.companhia||'')!==A.companhia&&!gl.some(g=>g.companhia===A.companhia)) return false;
+    if(A.bairro&&p.bairro!==A.bairro&&!gl.some(g=>(g.bairros||[]).includes(A.bairro))) return false;
+    if(q&&!infNorm([p.nome,p.alcunha,p.documento].join(' ')).includes(q)) return false; return true; });
+  L.sort((x,y)=>(S.get(y.id)[chave]-S.get(x.id)[chave])||(S.get(y.id).total-S.get(x.id).total)||x.nome.localeCompare(y.nome));
+  const max=Math.max(1,...L.map(p=>S.get(p.id)[chave])); const top=L.slice(0,+A.top||100);
+  const colPos={geral:'posGeral',quant:'posQuant',qual:'posQual'}[A.modo];
+  b.innerHTML=`<div class="if-box"><div class="if-fil" style="box-shadow:none;border:1px solid #e3dcc0">
+    <div><label>Ranking</label>${sel('alf-modo',[['geral','Geral (quant. + qual.)'],['quant','Quantitativo (todos)'],['qual','Qualitativo (selecionados)']],A.modo,'').replace('<option value=""></option>','')}</div>
+    <div style="flex:1;min-width:160px"><label>Busca</label><input id="alf-busca" value="${esc(A.busca)}"></div>
+    <div><label>Rede</label>${sel('alf-rede',infRedes(),A.rede,'Todas')}</div><div><label>Batalhão</label>${sel('alf-batalhao',infBatalhoes(),A.batalhao,'Todos')}</div><div><label>Companhia</label>${sel('alf-companhia',infCompanhias(),A.companhia,'Todas')}</div>
+    <div><label>Bairro</label>${sel('alf-bairro',infBairros().filter(x=>INF.pessoas.some(p=>p.bairro===x)||INF.gov.some(g=>(g.bairros||[]).includes(x))),A.bairro,'Todos')}</div><div><label>Situação</label>${sel('alf-status',Object.entries(INF_STATUS),A.status,'Todas')}</div>
+    <div><label>Mostrar</label>${sel('alf-top',[[25,'Top 25'],[50,'Top 50'],[100,'Top 100'],[500,'Top 500']],A.top,'').replace('<option value=""></option>','')}</div>
+    <div><label style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="alf-sel" style="width:auto" ${A.soSel?'checked':''}> só selecionados ★</label></div>
+    <div><button class="btn secundario if-sm" id="alf-csv">⬇️ CSV</button></div></div>
+   <div style="font-size:12px;color:#666;margin:6px 0"><b>${L.length}</b> infratores no ranking · pontuação conforme as regras do administrativo (peso do sensor: ${INF.alvoCfg.sensorPeso} pts por ponto)</div>
+   <div class="if-tb"><table><thead><tr><th style="width:44px">#</th><th>Infrator</th><th>Situação</th><th>Rede / Cia</th><th>Papel</th><th style="text-align:right">Quant.</th><th style="text-align:right">Qual.</th><th style="text-align:center">Sensor</th><th style="min-width:170px">Total</th><th></th></tr></thead><tbody>
+   ${top.map(p=>{ const a=S.get(p.id); const gl=INF.cache.govP.get(p.id)||[]; const aberto=A.aberto===p.id;
+     return `<tr class="cl" data-fid="${p.id}"><td><b>${a[colPos]??'—'}</b></td><td><b>${esc(p.nome)}</b>${p.alcunha?` <span style="color:#777">“${esc(p.alcunha)}”</span>`:''} ${a.sel?'<span style="color:#a4202a" title="Selecionado para análise qualitativa">★</span>':''}</td><td>${infBadge(p.status)}</td><td>${esc([p.rede,p.companhia].filter(Boolean).join(' · '))}</td><td>${esc(gl.map(g=>g.papel).join('; '))}</td>
+     <td style="text-align:right">${a.quant.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td style="text-align:right">${a.sel?a.qual.toLocaleString('pt-BR',{maximumFractionDigits:1}):'—'}</td><td style="text-align:center">${a.sel?a.sensor:'—'}</td>
+     <td><div style="display:flex;align-items:center;gap:6px"><b style="min-width:42px;text-align:right">${a[chave].toLocaleString('pt-BR',{maximumFractionDigits:1})}</b><div style="flex:1;background:#eee;border-radius:4px;height:8px"><div style="width:${Math.max(0,a[chave])/max*100}%;background:#a4202a;height:8px;border-radius:4px"></div></div></div></td><td><a href="#" data-det="${p.id}">${aberto?'▾':'▸'} pontos</a></td></tr>${aberto?`<tr><td></td><td colspan="9" style="background:#fbfaf3">${infAlvoDetalheHtml(a)}</td></tr>`:''}`; }).join('')||'<tr><td colspan="10" style="color:#888">Nenhum infrator com esses filtros.</td></tr>'}
+   </tbody></table></div></div>`;
+  let tb; const bind=(id,k,tipo)=>{ const e=document.getElementById(id); e.addEventListener('input',()=>{ clearTimeout(tb); tb=setTimeout(()=>{ A[k]=tipo==='chk'?e.checked:e.value; infAlvoRank(b); if(k==='busca'){ const q2=document.getElementById('alf-busca'); q2.focus(); q2.setSelectionRange(q2.value.length,q2.value.length); } },k==='busca'?300:0); }); };
+  [['alf-modo','modo'],['alf-busca','busca'],['alf-rede','rede'],['alf-batalhao','batalhao'],['alf-companhia','companhia'],['alf-bairro','bairro'],['alf-status','status'],['alf-top','top']].forEach(([i,k])=>bind(i,k)); bind('alf-sel','soSel','chk');
+  b.querySelectorAll('tr.cl').forEach(t=>t.onclick=ev=>{ if(ev.target.closest('[data-det]')) return; infFicha(+t.dataset.fid,'alvo'); });
+  b.querySelectorAll('[data-det]').forEach(a=>a.onclick=ev=>{ ev.preventDefault(); const id=+a.dataset.det; A.aberto=A.aberto===id?null:id; infAlvoRank(b); });
+  document.getElementById('alf-csv').onclick=()=>{ const qv=v=>'"'+String(v??'').replace(/"/g,'""')+'"'; const head=['Posição','Nome','Alcunha','Situação','Rede','Batalhão','Companhia','Bairro','Papéis na governança','Quantitativo','Qualitativo','Sensor','Total'];
+    const lin=L.map(p=>{ const a=S.get(p.id); return [a[colPos]??'',p.nome,p.alcunha,INF_STATUS[p.status]||p.status,p.rede,p.batalhao,p.companhia,p.bairro,(INF.cache.govP.get(p.id)||[]).map(g=>g.papel).join(' | '),String(a.quant).replace('.',','),a.sel?String(a.qual).replace('.',','):'',a.sel?a.sensor:'',String(a.total).replace('.',',')].map(qv).join(';'); });
+    const el=document.createElement('a'); el.href=URL.createObjectURL(new Blob(['﻿'+head.map(qv).join(';')+'\n'+lin.join('\n')],{type:'text/csv;charset=utf-8'})); el.download='alvo-prioritario-'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(el); el.click(); el.remove(); };
+}
+function infAlvoSel(b){
+  const ed=INF.podeEditar; const S=infAlvo(); const L=INF.alvos.map(a=>INF.cache.byId.get(a.pessoa_id)).filter(Boolean).sort((x,y)=>(S.get(y.id).qual-S.get(x.id).qual)||x.nome.localeCompare(y.nome));
+  b.innerHTML=`<div class="if-box"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">⭐ Infratores selecionados para análise qualitativa (${L.length})</h3>${ed?'<button class="btn if-sm" id="as-add">＋ Selecionar infrator</button>':''}</div>
+   <p style="font-size:12px;color:#555;margin:6px 0">Cada selecionado recebe a <b>pontuação sensor (0 a 10)</b>, que não faz parte do cadastro. Além do sensor, valem as regras marcadas como “Só selecionados” no administrativo.</p>
+   <div class="if-tb"><table><thead><tr><th>#</th><th>Infrator</th><th>Situação</th><th style="width:110px">Sensor (0–10)</th><th>Justificativa</th><th style="text-align:right">Qualitativo</th><th style="text-align:right">Total</th><th></th></tr></thead><tbody>
+   ${L.map(p=>{ const a=S.get(p.id), s=INF.cache.alvoP.get(p.id); return `<tr data-id="${p.id}"><td><b>${a.posQual}</b></td><td><a href="#" data-f="${p.id}"><b>${esc(p.nome)}</b></a>${p.alcunha?` <span style="color:#777">“${esc(p.alcunha)}”</span>`:''}</td><td>${infBadge(p.status)}</td>
+     <td><input type="number" min="0" max="10" step="0.5" value="${s.sensor}" data-sn="${s.id}" data-pid="${p.id}" style="width:90px" ${ed?'':'disabled'}></td><td><input value="${esc(s.obs||'')}" data-ob="${s.id}" data-pid="${p.id}" style="width:100%" ${ed?'':'disabled'}></td>
+     <td style="text-align:right">${a.qual.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td><td style="text-align:right"><b>${a.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td><td>${ed?`<button class="btn perigo if-sm" data-rm="${s.id}">Retirar</button>`:''}</td></tr>`; }).join('')||'<tr><td colspan="8" style="color:#888">Nenhum infrator selecionado ainda.</td></tr>'}</tbody></table></div></div>`;
+  b.querySelectorAll('[data-f]').forEach(a=>a.onclick=e=>{ e.preventDefault(); infFicha(+a.dataset.f,'alvo'); });
+  const salvar=async(pid,sid)=>{ const s=b.querySelector(`[data-sn="${sid}"]`).value, o=b.querySelector(`[data-ob="${sid}"]`).value; if(s===''||+s<0||+s>10){ infToast('Sensor deve ficar entre 0 e 10.',true); return; }
+    try{ await apiInf('infSalvar',{entidade:'alvo',dados:{id:sid,pessoa_id:pid,sensor:+s,obs:o}}); await infCarregar(); infToast('Salvo.'); infAlvoSel(b); const t=document.getElementById('inf-corpo'); }catch(e){ infToast(e.message,true); } };
+  b.querySelectorAll('[data-sn]').forEach(i=>i.onchange=()=>salvar(+i.dataset.pid,+i.dataset.sn)); b.querySelectorAll('[data-ob]').forEach(i=>i.onchange=()=>salvar(+i.dataset.pid,+i.dataset.ob));
+  b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=async()=>{ if(!confirm('Retirar da análise qualitativa?')) return; try{ await apiInf('infExcluir',{entidade:'alvo',id:+x.dataset.rm}); await infCarregar(); infAlvoSel(b); }catch(e){ infToast(e.message,true); } });
+  const ad=document.getElementById('as-add'); if(ad) ad.onclick=()=>infEscolherInfrator('Selecionar para análise qualitativa',pid=>infAlvoNovo(pid,b),INF.alvos.map(a=>a.pessoa_id));
+}
+function infAlvoNovo(pid,b){
+  const p=INF.cache.byId.get(pid); if(!p) return; let ov=document.getElementById('inf-anovo'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='inf-anovo'; ov.className='if-ov'; ov.style.zIndex=9300; document.body.appendChild(ov);
+  ov.innerHTML=`<div class="if-ovbox" style="width:min(520px,98vw)"><h3 style="margin:0 0 6px">Pontuação sensor — ${esc(infNomeExib(p))}</h3><p style="font-size:12px;color:#555;margin:0 0 8px">Atribua a nota qualitativa de 0 a 10 para este infrator. Ela soma ao ranking conforme o peso definido no administrativo.</p>
+    <div class="if-grid"><div><label>Pontuação sensor (0 a 10) *</label><input id="an-s" type="number" min="0" max="10" step="0.5" autofocus></div><div class="if-g2"><label>Justificativa</label><input id="an-o"></div></div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button class="btn" id="an-ok">⭐ Selecionar</button><button class="btn secundario" id="an-x">Cancelar</button><span id="an-m" style="font-size:12px"></span></div></div>`;
+  document.getElementById('an-x').onclick=()=>ov.remove();
+  document.getElementById('an-ok').onclick=async()=>{ const s=document.getElementById('an-s').value; const m=document.getElementById('an-m'); if(s===''||+s<0||+s>10){ m.innerHTML='<span style="color:#a4202a">Informe de 0 a 10.</span>'; return; }
+    try{ await apiInf('infSalvar',{entidade:'alvo',dados:{pessoa_id:pid,sensor:+s,obs:document.getElementById('an-o').value}}); ov.remove(); await infCarregar(); infRender(); infToast('Selecionado para análise qualitativa.'); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+}
+// ---------- administrativo: regras de pontuacao ----------
+function infAlvoRegras(b){
+  const adm=isMaster(); const cfg=JSON.parse(JSON.stringify(INF.alvoCfg)); const dis=adm?'':'disabled';
+  const valorInput=(r,i)=>{ const t=ALVO_CAMPOS[r.c]?ALVO_CAMPOS[r.c].t:'none'; const opt=(ops,tem)=>`<select data-v="${i}" ${dis}>${tem?'<option value="">(qualquer)</option>':''}${ops.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(r.v)===String(v)?'selected':''}>${esc(l)}</option>`; }).join('')}</select>`;
+    if(t==='status') return opt(Object.entries(INF_STATUS)); if(t==='nivel') return opt(INF.cat.niveis.map(n=>[n[0],n[0]+' – '+n[1]]));
+    if(t==='faccao') return opt(infFaccoes(),1); if(t==='rede') return opt(infRedes(),1); if(t==='batalhao') return opt(infBatalhoes(),1); if(t==='companhia') return opt(infCompanhias(),1);
+    if(t==='papel') return opt(INF.cat.govPapeis.map(x=>x[0]),1); if(t==='crime') return opt(INF.cat.crimes.map(x=>x[0]),1);
+    if(t==='bairro') return `<input data-v="${i}" list="al-dl-b" value="${esc(r.v||'')}" placeholder="(qualquer)" ${dis}>`; if(t==='area') return opt(infAreas(),1);
+    if(t==='num') return `<input data-v="${i}" type="number" min="1" max="5" value="${esc(r.v||'')}" style="width:80px" ${dis}>`; if(t==='text') return `<input data-v="${i}" value="${esc(r.v||'')}" ${dis}>`;
+    return '<span style="color:#aaa">—</span>'; };
+  const draw=()=>{ b.innerHTML=`<div class="if-box"><h3>⚙️ Regras de pontuação — quais dados do cadastro valem pontos</h3>
+    <p style="font-size:12.5px;color:#555;margin:0 0 8px">Cada linha é um item pontuável. <b>Fixo</b> = soma os pontos uma vez quando o critério é verdadeiro; <b>por unidade</b> = pontos × quantidade (ex.: por vínculo, por registro), com <b>teto</b> opcional. <b>Escopo “Só selecionados”</b> = vale apenas para quem está na análise qualitativa. Pontos negativos são permitidos. Os valores iniciais são exemplos — ajuste ao seu critério.${adm?'':' <b style="color:#a4202a">Somente o MASTER altera as regras.</b>'}</p>
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600">Peso da pontuação sensor (pontos por ponto de 0 a 10)</label><input id="ar-peso" type="number" min="0" step="0.5" value="${cfg.sensorPeso}" style="width:120px" ${dis}></div><div style="font-size:12px;color:#666">Ex.: sensor 8 × peso ${cfg.sensorPeso} = <b>${(8*cfg.sensorPeso)}</b> pontos qualitativos.</div></div>
+    <datalist id="al-dl-b">${infBairros().map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+    <div class="if-tb" style="max-height:520px"><table><thead><tr><th style="width:36px">Ativa</th><th>Dado do cadastro</th><th>Valor</th><th>Modo</th><th style="width:90px">Pontos</th><th style="width:80px">Teto</th><th>Escopo</th><th></th></tr></thead><tbody>
+    ${cfg.regras.map((r,i)=>`<tr><td style="text-align:center"><input type="checkbox" data-on="${i}" ${r.on!==false?'checked':''} style="width:auto" ${dis}></td>
+      <td><select data-c="${i}" ${dis}>${Object.entries(ALVO_CAMPOS).map(([k,v])=>`<option value="${k}" ${r.c===k?'selected':''}>${esc(v.l)}</option>`).join('')}</select></td><td>${valorInput(r,i)}</td>
+      <td><select data-m="${i}" ${dis}><option value="fixo" ${r.modo!=='unidade'?'selected':''}>Fixo</option><option value="unidade" ${r.modo==='unidade'?'selected':''}>Por unidade</option></select></td>
+      <td><input type="number" step="0.5" data-p="${i}" value="${r.pts}" ${dis}></td><td><input type="number" min="0" step="1" data-t="${i}" value="${r.max||0}" title="0 = sem teto" ${dis}></td>
+      <td><select data-e="${i}" ${dis}><option value="todos" ${r.esc!=='sel'?'selected':''}>Todos (quantitativo)</option><option value="sel" ${r.esc==='sel'?'selected':''}>Só selecionados (qualitativo)</option></select></td><td>${adm?`<button class="btn perigo if-sm" data-x="${i}">✖</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" style="color:#888">Nenhuma regra. Adicione abaixo.</td></tr>'}
+    </tbody></table></div>
+    ${adm?'<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn secundario if-sm" id="ar-add">＋ Adicionar regra</button><button class="btn" id="ar-ok">💾 Salvar regras</button><button class="btn secundario if-sm" id="ar-rst">Restaurar exemplos</button><span id="ar-m" style="font-size:12px"></span></div>':''}</div>`;
+    if(!adm) return;
+    const lig=(att,fn,ev)=>b.querySelectorAll(`[${att}]`).forEach(e=>e.addEventListener(ev||'change',()=>fn(+e.getAttribute(att),e)));
+    lig('data-on',(i,e)=>{ cfg.regras[i].on=e.checked; }); lig('data-c',(i,e)=>{ cfg.regras[i].c=e.value; cfg.regras[i].v=''; draw(); }); lig('data-v',(i,e)=>{ cfg.regras[i].v=e.value; },'input');
+    lig('data-m',(i,e)=>{ cfg.regras[i].modo=e.value; }); lig('data-p',(i,e)=>{ cfg.regras[i].pts=+e.value||0; },'input'); lig('data-t',(i,e)=>{ cfg.regras[i].max=+e.value||0; },'input'); lig('data-e',(i,e)=>{ cfg.regras[i].esc=e.value; });
+    lig('data-x',(i)=>{ cfg.regras.splice(i,1); draw(); },'click'); document.getElementById('ar-peso').addEventListener('input',e=>{ cfg.sensorPeso=+e.target.value||0; });
+    document.getElementById('ar-add').onclick=()=>{ cfg.regras.push({on:true,c:'crime_reg',v:'',modo:'unidade',pts:1,max:0,esc:'todos'}); draw(); };
+    document.getElementById('ar-rst').onclick=()=>{ if(!confirm('Substituir pelas regras de exemplo?')) return; const d=JSON.parse(JSON.stringify(INF_DEF.alvo)); cfg.regras=d.regras; cfg.sensorPeso=d.sensorPeso; draw(); };
+    document.getElementById('ar-ok').onclick=async()=>{ const m=document.getElementById('ar-m'); m.textContent='Salvando…'; try{ await apiInf('infConfigSalvar',{chave:'alvo',valor:{sensorPeso:cfg.sensorPeso,regras:cfg.regras}}); INF.alvoCfg=JSON.parse(JSON.stringify(cfg)); INF.config.alvo=INF.alvoCfg; INF.cache.alvoSc=null; infToast('Regras salvas. Ranking recalculado.'); infAlvoTab(document.getElementById('inf-corpo')); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
+  };
+  draw();
 }
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
