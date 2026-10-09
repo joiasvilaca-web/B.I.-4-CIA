@@ -289,6 +289,32 @@ async function api(op, params={}){
 
 function esc(s){ return (s===null||s===undefined) ? '' : String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtData(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+// rotulos de valor desenhados em todos os graficos (barras, linhas, pizza/rosca)
+const GRAF_VALORES={ id:'valorRotulo',
+  afterDatasetsDraw(chart){
+    const op=(chart.options.plugins&&chart.options.plugins.valorRotulo); if(op===false) return;
+    const ctx=chart.ctx, tipoBase=chart.config.type; const fmt=v=>{ const n=+v; if(!isFinite(n)) return ''; return n.toLocaleString('pt-BR',{maximumFractionDigits:Math.abs(n)>=100?0:1}); };
+    const horiz=chart.options.indexAxis==='y';
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta=chart.getDatasetMeta(di); if(meta.hidden||chart.isDatasetVisible(di)===false) return; if(ds.valorRotulo===false) return;
+      const tipo=meta.type||tipoBase; const f=ds.formatoRotulo||fmt; const n=meta.data.length;
+      const tot=(tipo==='doughnut'||tipo==='pie')?ds.data.reduce((a,b)=>a+(+b||0),0):0;
+      meta.data.forEach((el,i)=>{
+        let raw=ds.data[i]; if(raw&&typeof raw==='object') raw=raw.y; if(raw===null||raw===undefined||raw===0||isNaN(+raw)) return;
+        const txt=String(f(raw,i)); if(!txt) return; let x,y,dentro=false,tam=11,base='middle',al='center';
+        if(tipo==='bar'){ const p=el.getProps(['x','y','base','width','height'],true);
+          if(horiz){ const larg=Math.abs(p.x-p.base); const w=ctx.measureText(txt).width; dentro=larg>w+14; x=dentro?p.x-5:p.x+5; y=p.y; al=dentro?'right':'left'; }
+          else { const alt=Math.abs(p.base-p.y); dentro=alt>20&&p.width>=ctx.measureText(txt).width+4; if(chart.options.scales&&chart.options.scales.x&&chart.options.scales.x.stacked){ dentro=alt>14; x=p.x; y=(p.y+p.base)/2; base='middle'; } else { x=p.x; y=dentro?p.y+11:p.y-8; base='middle'; } if(p.width<ctx.measureText(txt).width+2) tam=9; } }
+        else if(tipo==='line'||tipo==='radar'){ if(n>60) return; const p=el.getProps(['x','y'],true); x=p.x; y=p.y-11; }
+        else if(tipo==='doughnut'||tipo==='pie'){ const p=el.getProps(['startAngle','endAngle','innerRadius','outerRadius','x','y'],true); const ang=(p.startAngle+p.endAngle)/2; const r=(p.innerRadius+p.outerRadius)/2; x=p.x+Math.cos(ang)*r; y=p.y+Math.sin(ang)*r; dentro=true; if(tot&&(+raw/tot)<0.025) return; }
+        else if(tipo==='scatter'||tipo==='bubble'){ return; }
+        else return;
+        ctx.save(); ctx.font='700 '+tam+'px Inter,Segoe UI,Arial,sans-serif'; ctx.textAlign=al; ctx.textBaseline=base; ctx.lineJoin='round'; ctx.lineWidth=3;
+        if(dentro){ ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.fillStyle='#fff'; } else { ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.fillStyle='#1d1b16'; }
+        ctx.strokeText(txt,x,y); ctx.fillText(txt,x,y); ctx.restore();
+      });
+    });
+  } };
 function desenharGrafico(elId, config){
   const el = document.getElementById(elId);
   if(!el){ return; }
@@ -296,7 +322,10 @@ function desenharGrafico(elId, config){
     el.outerHTML = '<p style="color:#a4202a;font-size:12px;padding:12px;background:#f7dada;border-radius:6px">⚠️ A biblioteca de gráficos não carregou (Chart.js). Isso costuma acontecer quando a rede bloqueia o endereço cdnjs.cloudflare.com. Peça ao setor de TI/rede pra liberar esse domínio, ou tente acessar de outra rede/celular pra confirmar.</p>';
     return;
   }
-  try{ return new Chart(el, config); }
+  try{
+    if(!Chart.__vrot){ Chart.register(GRAF_VALORES); Chart.__vrot=true; }
+    config.options = config.options||{}; const lay=config.options.layout=config.options.layout||{}; if(lay.padding===undefined) lay.padding={top:22,right:26,bottom:4,left:4};
+    return new Chart(el, config); }
   catch(e){ el.outerHTML = `<p style="color:#a4202a;font-size:12px;padding:12px;background:#f7dada;border-radius:6px">⚠️ Erro ao desenhar o gráfico: ${esc(e.message)}</p>`; }
 }
 function fecharModal(){ document.getElementById('overlay').classList.remove('aberto'); document.getElementById('modal-corpo').innerHTML=''; }
