@@ -4583,20 +4583,26 @@ function infDduCands(ev){
 
 let IMP=null;
 function infImpOverlay(html){ let ov=document.getElementById('inf-ddu'); if(!ov){ ov=document.createElement('div'); ov.id='inf-ddu'; ov.className='if-ov'; ov.style.zIndex=9500; document.body.appendChild(ov); } ov.innerHTML=`<div class="if-ovbox">${html}</div>`; return ov; }
-function infImpFechar(){ const o=document.getElementById('inf-ddu'); if(o) o.remove(); IMP=null; }
+let INF_DDU_FILA=[], INF_DDU_TOT=0, INF_DDU_PREFER=null;
+function infImpFechar(naoSeguir){ const o=document.getElementById('inf-ddu'); if(o) o.remove(); IMP=null; if(naoSeguir===true){ INF_DDU_FILA=[]; return; } if(INF_DDU_FILA.length) setTimeout(infImpProximo,150); }
+function infImpFecharTudo(){ infImpFechar(true); }
 function infImportarDdu(preferId){
   if(!INF.podeEditar){ infToast('Você não tem permissão de edição nesta área.',true); return; }
-  const inp=document.createElement('input'); inp.type='file'; inp.accept='application/pdf,.pdf';
-  inp.onchange=async()=>{ const f=inp.files[0]; if(!f) return;
-    if(f.size>8*1024*1024){ infToast('PDF maior que 8 MB.',true); return; }
-    infImpOverlay('<div style="padding:30px;text-align:center"><b>Lendo o DDU com IA…</b><br><span style="font-size:12px;color:#666">pode levar até ~30 segundos</span></div>');
-    try{
-      const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=()=>rej(new Error('Não consegui ler o arquivo')); r.readAsDataURL(f); });
-      const r=await apiInf('infDduExtrair',{base64:b64});
-      infImpIniciar(r.ddu, r.existente, preferId);
-    }catch(e){ infImpOverlay(`<p style="color:#a4202a">${esc(e.message)}</p><button class="btn secundario" id="ifd-x">Fechar</button>`); document.getElementById('ifd-x').onclick=infImpFechar; }
-  };
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='application/pdf,.pdf'; inp.multiple=true;
+  inp.onchange=()=>{ const fs=Array.from(inp.files||[]).filter(f=>/\.pdf$/i.test(f.name)||f.type==='application/pdf'); if(!fs.length) return;
+    const gr=fs.filter(f=>f.size>8*1024*1024); if(gr.length) infToast(gr.length+' PDF(s) maior(es) que 8 MB foram ignorados: '+gr.map(f=>f.name).join(', '),true);
+    INF_DDU_FILA=fs.filter(f=>f.size<=8*1024*1024); INF_DDU_TOT=INF_DDU_FILA.length; INF_DDU_PREFER=preferId; if(!INF_DDU_FILA.length) return; infImpProximo(); };
   inp.click();
+}
+async function infImpProximo(){
+  const f=INF_DDU_FILA.shift(); if(!f) return; const n=INF_DDU_TOT-INF_DDU_FILA.length; const pref=(n===1)?INF_DDU_PREFER:null; const rot=INF_DDU_TOT>1?`<div style="font-size:12px;color:#8a5a00;margin-bottom:6px">📄 Arquivo ${n} de ${INF_DDU_TOT}: <b>${esc(f.name)}</b></div>`:'';
+  infImpOverlay(`${rot}<div style="padding:30px;text-align:center"><b>Lendo o DDU com IA…</b><br><span style="font-size:12px;color:#666">pode levar até ~30 segundos</span></div>`);
+  try{
+    const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=()=>rej(new Error('Não consegui ler o arquivo')); r.readAsDataURL(f); });
+    const r=await apiInf('infDduExtrair',{base64:b64});
+    infImpIniciar(r.ddu, r.existente, pref);
+    if(INF_DDU_TOT>1){ const box=document.querySelector('#inf-ddu .if-ovbox'); if(box) box.insertAdjacentHTML('afterbegin',`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#8a5a00;margin-bottom:6px">📄 Arquivo ${n} de ${INF_DDU_TOT}: <b>${esc(f.name)}</b>${INF_DDU_FILA.length?`<button class="btn secundario if-sm" id="ifd-cancfila">Cancelar os ${INF_DDU_FILA.length} restantes</button>`:''}</div>`); const cf=document.getElementById('ifd-cancfila'); if(cf) cf.onclick=()=>{ INF_DDU_FILA=[]; cf.remove(); infToast('Fila cancelada; este arquivo continua.'); }; }
+  }catch(e){ infImpOverlay(`${rot}<p style="color:#a4202a">${esc(f.name)}: ${esc(e.message)}</p><button class="btn secundario" id="ifd-x">${INF_DDU_FILA.length?'Seguir para o próximo':'Fechar'}</button>`); document.getElementById('ifd-x').onclick=()=>infImpFechar(); }
 }
 function infImpIniciar(d, existente, preferId){
   const ja=INF.ddus.find(x=>x.protocolo===d.protocolo);
@@ -5384,9 +5390,9 @@ function campoInputHtml(campo, valor){
   return `<input type="text" id="${id}" value="${esc(v)}">`;
 }
 
-let _anexoPendente = null; // {tipo, nome_original, base64, content_type} — só usado ao criar novo registro
+let _anexoPendente = []; // [{tipo, nome_original, base64, content_type}] — só usado ao criar novo registro
 function abrirFormRegistro(areaId, registro=null){
-  _anexoPendente = null;
+  _anexoPendente = [];
   const cfg = ST.areasConfig.find(a=>a.area_id===areaId);
   const campos = cfg?.campos || [];
   const dados = registro?.dados || {};
@@ -5395,8 +5401,8 @@ function abrirFormRegistro(areaId, registro=null){
     <h3>${registro?'Editar':'Novo'} lançamento — ${esc(cfg?.nome||areaId)}</h3>
     ${!registro ? `
       <div class="zona-anexo-ia" id="zona-ia">
-        <div id="zona-ia-texto">📎 Anexe foto, PDF ou planilha — foto e PDF a IA já lê e preenche o formulário automaticamente; planilha é só anexada</div>
-        <input type="file" id="in-anexo-ia" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv" style="margin-top:8px">
+        <div id="zona-ia-texto">📎 Anexe um ou vários arquivos (foto, PDF ou planilha) — a IA lê o primeiro foto/PDF e preenche o formulário; os demais e as planilhas são só anexados</div>
+        <input type="file" id="in-anexo-ia" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv" multiple style="margin-top:8px">
       </div>
       <div id="area-avisos-ia"></div>
     ` : ''}
@@ -5408,49 +5414,34 @@ function abrirFormRegistro(areaId, registro=null){
   `);
 
   const inAnexoIA = document.getElementById('in-anexo-ia');
+  const lerB64 = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=()=>rej(new Error('Não consegui ler '+f.name)); r.readAsDataURL(f); });
   if(inAnexoIA) inAnexoIA.addEventListener('change', async ()=>{
-    const f = inAnexoIA.files[0]; if(!f) return;
+    const fs = Array.from(inAnexoIA.files||[]); if(!fs.length) return;
     const zona = document.getElementById('zona-ia'), txt = document.getElementById('zona-ia-texto');
-    const nomeExt = (f.name.split('.').pop()||'').toLowerCase();
-    const ehPlanilha = ['xls','xlsx','xlsm','csv'].includes(nomeExt) || f.type.includes('spreadsheet') || f.type.includes('ms-excel') || f.type==='text/csv';
-    const tipo = ehPlanilha ? 'planilha' : (f.type.startsWith('image/') ? 'foto' : 'pdf');
-    const reader = new FileReader();
-
-    if(tipo === 'planilha'){
-      reader.onload = ()=>{
-        const base64 = reader.result.split(',')[1];
-        _anexoPendente = { tipo, nome_original: f.name, base64, content_type: f.type };
-        txt.textContent = '📎 ' + f.name + ' — planilha anexada (sem leitura automática por IA ainda)';
-      };
-      reader.readAsDataURL(f);
-      return;
+    const tipoDe = f => { const ext=(f.name.split('.').pop()||'').toLowerCase(); return (['xls','xlsx','xlsm','csv'].includes(ext)||f.type.includes('spreadsheet')||f.type.includes('ms-excel')||f.type==='text/csv') ? 'planilha' : (f.type.startsWith('image/')?'foto':'pdf'); };
+    zona.classList.add('analisando'); txt.textContent='⏳ Carregando '+fs.length+' arquivo(s)…';
+    _anexoPendente = [];
+    try{ for(const f of fs){ _anexoPendente.push({ tipo:tipoDe(f), nome_original:f.name, base64:await lerB64(f), content_type:f.type }); } }
+    catch(e){ txt.textContent='⚠️ '+e.message; zona.classList.remove('analisando'); return; }
+    const lista = _anexoPendente.map(x=>x.nome_original).join(', ');
+    const alvo = _anexoPendente.find(x=>x.tipo!=='planilha');
+    if(!alvo){ txt.textContent='📎 '+_anexoPendente.length+' planilha(s) anexada(s): '+lista+' (sem leitura automática por IA)'; zona.classList.remove('analisando'); return; }
+    txt.textContent='🤖 Lendo '+alvo.nome_original+' com IA…';
+    try{
+      const d = await api('analisarArquivo', {area_id: areaId, tipo: alvo.tipo, base64: alvo.base64, content_type: alvo.content_type});
+      const a = d.analise;
+      if(a.titulo_sugerido) document.getElementById('rg-titulo').value = a.titulo_sugerido;
+      if(a.resumo) document.getElementById('rg-descricao').value = a.resumo;
+      for(const cp of campos){ const val = a.campos?.[cp.id]; const el = document.getElementById('cc_'+cp.id); if(val && el) el.value = val; }
+      const avisos = document.getElementById('area-avisos-ia');
+      avisos.innerHTML = a.possivel_duplicado
+        ? `<div class="badge-dup">⚠️ <span>Possível duplicidade: ${esc(a.motivo_duplicado||'este documento parece semelhante a um lançamento já existente.')} Confira antes de salvar.</span></div>`
+        : `<div class="badge-ok-ia">✅ ${esc(alvo.nome_original)} lido — campos preenchidos automaticamente. Confira e ajuste se precisar.</div>`;
+      txt.textContent = '📎 '+_anexoPendente.length+' arquivo(s): '+lista+(_anexoPendente.length>1?' — IA leu o primeiro foto/PDF; todos serão anexados ao salvar':' — analisado');
+    }catch(e){
+      txt.textContent = '⚠️ Não foi possível ler o documento agora (' + e.message + '). '+_anexoPendente.length+' arquivo(s) ainda será(ão) anexado(s) ao salvar.';
     }
-
-    zona.classList.add('analisando'); txt.textContent = '🤖 Lendo o documento com IA…';
-    reader.onload = async ()=>{
-      const base64 = reader.result.split(',')[1];
-      _anexoPendente = { tipo, nome_original: f.name, base64, content_type: f.type };
-      try{
-        const d = await api('analisarArquivo', {area_id: areaId, tipo, base64, content_type: f.type});
-        const a = d.analise;
-        if(a.titulo_sugerido) document.getElementById('rg-titulo').value = a.titulo_sugerido;
-        if(a.resumo) document.getElementById('rg-descricao').value = a.resumo;
-        for(const cp of campos){
-          const val = a.campos?.[cp.id];
-          const el = document.getElementById('cc_'+cp.id);
-          if(val && el) el.value = val;
-        }
-        const avisos = document.getElementById('area-avisos-ia');
-        avisos.innerHTML = a.possivel_duplicado
-          ? `<div class="badge-dup">⚠️ <span>Possível duplicidade: ${esc(a.motivo_duplicado||'este documento parece semelhante a um lançamento já existente.')} Confira antes de salvar.</span></div>`
-          : `<div class="badge-ok-ia">✅ Documento lido — campos preenchidos automaticamente. Confira e ajuste se precisar.</div>`;
-        txt.textContent = '📎 ' + f.name + ' — analisado';
-      }catch(e){
-        txt.textContent = '⚠️ Não foi possível ler o documento agora (' + e.message + '). O arquivo ainda será anexado ao salvar.';
-      }
-      zona.classList.remove('analisando');
-    };
-    reader.readAsDataURL(f);
+    zona.classList.remove('analisando');
   });
 
   document.getElementById('rg-salvar').addEventListener('click', async ()=>{
@@ -5469,8 +5460,8 @@ function abrirFormRegistro(areaId, registro=null){
         await api('atualizarRegistro', {id:registro.id, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
       } else {
         const novo = await api('criarRegistro', {area_id:areaId, titulo, descricao:document.getElementById('rg-descricao').value, dados:dadosNovos});
-        if(_anexoPendente){
-          await api('uploadAnexo', {registro_id: novo.registro.id, ..._anexoPendente, pular_analise:true, dados_extraidos: dadosNovos});
+        for(const ax of _anexoPendente){
+          await api('uploadAnexo', {registro_id: novo.registro.id, ...ax, pular_analise:true, dados_extraidos: dadosNovos});
         }
       }
       fecharModal(); renderArea(areaId);
@@ -5496,7 +5487,7 @@ async function abrirRegistro(id){
       ${acesso==='edit'?`<button onclick="excluirAnexo(${an.id}, ${id})" style="border:none;background:none;cursor:pointer;color:#a4202a">🗑️</button>`:''}
     </span></div>`).join('') || '<div style="color:#999;font-size:13px">Nenhum anexo</div>'}</div>
     ${acesso==='edit' ? `
-      <div style="margin-top:12px"><label>Adicionar anexo (foto, PDF ou planilha)</label><input type="file" id="in-anexo" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv"></div>
+      <div style="margin-top:12px"><label>Adicionar anexos (foto, PDF ou planilha — pode escolher vários)</label><input type="file" id="in-anexo" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv" multiple></div>
       <div style="margin-top:14px;display:flex;gap:8px">
         <button class="btn" onclick="abrirFormRegistro('${areaId}', ${JSON.stringify(reg).replace(/"/g,'&quot;')})">Editar</button>
         <button class="btn perigo" onclick="excluirRegistroConfirma(${id}, '${areaId}')">Excluir</button>
@@ -5505,20 +5496,18 @@ async function abrirRegistro(id){
   `);
   const inAnexo = document.getElementById('in-anexo');
   if(inAnexo) inAnexo.addEventListener('change', async ()=>{
-    const f = inAnexo.files[0]; if(!f) return;
-    const msg = document.getElementById('anexo-msg');
-    msg.className='msg-modal'; msg.textContent='Enviando...';
-    const tipo = f.type.startsWith('image/') ? 'foto' : (f.type==='application/pdf' ? 'pdf' : 'planilha');
-    const reader = new FileReader();
-    reader.onload = async ()=>{
-      const base64 = reader.result.split(',')[1];
+    const fs = Array.from(inAnexo.files||[]); if(!fs.length) return;
+    const msg = document.getElementById('anexo-msg'); let ok=0; const falhas=[];
+    for(let i=0;i<fs.length;i++){
+      const f=fs[i]; msg.className='msg-modal'; msg.textContent='Enviando '+(i+1)+' de '+fs.length+': '+f.name+'…';
+      const tipo = f.type.startsWith('image/') ? 'foto' : (f.type==='application/pdf' ? 'pdf' : 'planilha');
       try{
-        await api('uploadAnexo', {registro_id:id, tipo, nome_original:f.name, base64, content_type:f.type});
-        msg.className='msg-modal ok'; msg.textContent='Anexo enviado!';
-        abrirRegistro(id);
-      }catch(e){ msg.className='msg-modal erro'; msg.textContent=e.message; }
-    };
-    reader.readAsDataURL(f);
+        const base64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=()=>rej(new Error('leitura')); r.readAsDataURL(f); });
+        await api('uploadAnexo', {registro_id:id, tipo, nome_original:f.name, base64, content_type:f.type}); ok++;
+      }catch(e){ falhas.push(f.name+' ('+e.message+')'); }
+    }
+    if(falhas.length){ await abrirRegistro(id); const m2=document.getElementById('anexo-msg'); if(m2){ m2.className='msg-modal erro'; m2.textContent=ok+' enviado(s). Falharam: '+falhas.join('; '); } }
+    else { await abrirRegistro(id); const m2=document.getElementById('anexo-msg'); if(m2){ m2.className='msg-modal ok'; m2.textContent=ok+' anexo(s) enviado(s)!'; } }
   });
 }
 
