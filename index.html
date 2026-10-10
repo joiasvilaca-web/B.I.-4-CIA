@@ -3906,6 +3906,12 @@ function prodGdoGerar(){
 
 // ================= ABA INFRATORES (P2) =================
 const INF_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-infratores";
+const FOTO_URL = "https://wxiokmqnjtgbejgoepch.supabase.co/functions/v1/bi4cia-inf-fotos";
+async function apiFoto(op, params={}){
+  const r = await fetch(FOTO_URL, { method:'POST', headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}, body: JSON.stringify({op, token: ST.token, ...params}) });
+  let d; try{ d = await r.json(); }catch(e){ throw new Error('Resposta inválida do servidor de fotos'); }
+  if(!d.ok) throw new Error(d.erro||'Falha nas fotos'); return d;
+}
 async function apiInf(op, params={}){
   const r = await fetch(INF_URL, {
     method:'POST',
@@ -4122,13 +4128,49 @@ async function infCarregar(){
   const d=await apiInf('infCarregar');
   INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.ddus=d.ddus||[]; INF.ddupes=d.ddu_pessoas||[]; INF.gov=d.gov||[]; INF.alvos=d.alvos||[]; INF.config=d.config||{};
   INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos); INF.alvoCfg=(INF.config.alvo&&Array.isArray(INF.config.alvo.regras))?{sensorPeso:+INF.config.alvo.sensorPeso>=0?+INF.config.alvo.sensorPeso:5,regras:INF.config.alvo.regras}:JSON.parse(JSON.stringify(INF_DEF.alvo));
-  infRecalc(); INF.ok=true;
+  await infFotosRecarregar(true); infRecalc(); INF.ok=true;
+}
+function infFotosMapa(){ const m=new Map(); (INF.fotos||[]).forEach(f=>{ (m.get(f.pessoa_id)||m.set(f.pessoa_id,[]).get(f.pessoa_id)).push(f); }); m.forEach(a=>a.sort((x,y)=>(y.principal?1:0)-(x.principal?1:0)||x.id-y.id)); INF.fotoMap=m; }
+async function infFotosRecarregar(silencioso){ try{ const d=await apiFoto('fotosLista'); INF.fotos=d.fotos||[]; }catch(e){ if(!INF.fotos) INF.fotos=[]; if(!silencioso) infToast(e.message,true); } infFotosMapa(); }
+function infFotosDe(id){ return (INF.fotoMap&&INF.fotoMap.get(id))||[]; }
+function infAvatarImg(p,px){ const f=infFotosDe(p.id)[0]; return f?`<img src="${f.thumb}" class="if-av" style="width:${px}px;height:${px}px" alt="">`:''; }
+function infImgRedim(file,max,q,quad){ return new Promise((res,rej)=>{ const url=URL.createObjectURL(file); const im=new Image(); im.onload=()=>{ let sx=0,sy=0,sw=im.width,sh=im.height,W,H;
+    if(quad){ const m=Math.min(sw,sh); sx=(sw-m)/2; sy=(sh-m)/2; sw=sh=m; W=H=max; } else { const k=Math.min(1,max/Math.max(sw,sh)); W=Math.round(sw*k); H=Math.round(sh*k); }
+    const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.drawImage(im,sx,sy,sw,sh,0,0,W,H); URL.revokeObjectURL(url);
+    let out=c.toDataURL('image/jpeg',q); let qq=q; while(out.length>850000&&qq>.4){ qq-=.1; out=c.toDataURL('image/jpeg',qq); } res(out); }; im.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('Imagem inválida: '+file.name)); }; im.src=url; }); }
+function infFotoLightbox(pid,idx){
+  const L=infFotosDe(pid); if(!L.length) return; idx=(idx+L.length)%L.length; const f=L[idx]; const p=INF.cache.byId.get(pid);
+  let ov=document.getElementById('inf-lb'); if(!ov){ ov=document.createElement('div'); ov.id='inf-lb'; ov.style.cssText='position:fixed;inset:0;z-index:9900;background:rgba(8,7,5,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;color:#fff'; document.body.appendChild(ov); }
+  INF.fotoCache=INF.fotoCache||new Map();
+  ov.innerHTML=`<div style="position:absolute;top:14px;right:18px;display:flex;gap:10px"><button class="btn secundario if-sm" id="lb-x">✖ Fechar</button></div><div style="font-size:13px;color:#d9d3bd;margin-bottom:8px">${esc(p?infNomeExib(p):'')} · foto ${idx+1} de ${L.length}${f.principal?' · ★ principal':''}</div>
+   <div style="display:flex;align-items:center;gap:14px;max-width:100%"><button class="btn secundario" id="lb-p" ${L.length<2?'style="visibility:hidden"':''}>‹</button><img id="lb-img" src="${f.thumb}" style="max-width:min(86vw,1100px);max-height:74vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);filter:blur(1px)"><button class="btn secundario" id="lb-n" ${L.length<2?'style="visibility:hidden"':''}>›</button></div>
+   <div style="margin-top:10px;font-size:14px;max-width:80vw;text-align:center">${esc(f.legenda||'')}</div>`;
+  const fecha=()=>{ ov.remove(); document.removeEventListener('keydown',kd,true); }; const kd=e=>{ if(e.key==='Escape'){ e.stopPropagation(); fecha(); } else if(e.key==='ArrowRight') infFotoLightbox(pid,idx+1); else if(e.key==='ArrowLeft') infFotoLightbox(pid,idx-1); };
+  if(ov._kd) document.removeEventListener('keydown',ov._kd,true); ov._kd=kd; document.addEventListener('keydown',kd,true);
+  document.getElementById('lb-x').onclick=fecha; ov.onclick=e=>{ if(e.target===ov) fecha(); }; document.getElementById('lb-p').onclick=()=>infFotoLightbox(pid,idx-1); document.getElementById('lb-n').onclick=()=>infFotoLightbox(pid,idx+1);
+  const mostra=src=>{ const im=document.getElementById('lb-img'); if(im&&ov.isConnected){ im.src=src; im.style.filter='none'; } };
+  if(INF.fotoCache.has(f.id)) mostra(INF.fotoCache.get(f.id)); else apiFoto('fotoObter',{id:f.id}).then(d=>{ INF.fotoCache.set(f.id,d.foto); mostra(d.foto); }).catch(e=>infToast(e.message,true));
+}
+function infFichaFotos(c,p){
+  const ed=INF.podeEditar; const L=infFotosDe(p.id);
+  c.innerHTML=`${ed?`<div class="zona-anexo-ia" style="margin-bottom:10px"><div id="fo-txt">📷 Adicione uma ou várias fotos (galeria ou câmera). Elas são reduzidas automaticamente antes de enviar.</div><input type="file" id="fo-in" accept="image/*" multiple style="margin-top:8px"></div>`:''}
+   <div class="if-fotos">${L.map((f,i)=>`<div class="if-foto"><img src="${f.thumb}" data-i="${i}" alt="">${f.principal?'<span class="pri">★ principal</span>':''}<div class="lg">${esc(f.legenda||'')}</div>${ed?`<div class="ac"><button class="btn secundario if-sm" data-pr="${f.id}" ${f.principal?'disabled':''} title="Usar como foto principal">★</button><button class="btn secundario if-sm" data-lg="${f.id}" title="Legenda">✎</button><button class="btn perigo if-sm" data-ex="${f.id}" title="Excluir">🗑</button></div>`:''}</div>`).join('')||'<p style="color:#888;font-size:13px">Nenhuma foto cadastrada.</p>'}</div>`;
+  const refaz=async()=>{ await infFotosRecarregar(); infFicha(p.id,'fotos'); infRender(); };
+  c.querySelectorAll('img[data-i]').forEach(i=>i.onclick=()=>infFotoLightbox(p.id,+i.dataset.i));
+  c.querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{ try{ await apiFoto('fotoEditar',{id:+b.dataset.pr,principal:true}); await refaz(); }catch(e){ infToast(e.message,true); } });
+  c.querySelectorAll('[data-lg]').forEach(b=>b.onclick=async()=>{ const f=L.find(x=>x.id===+b.dataset.lg); const v=prompt('Legenda da foto:',f.legenda||''); if(v===null) return; try{ await apiFoto('fotoEditar',{id:f.id,legenda:v}); await refaz(); }catch(e){ infToast(e.message,true); } });
+  c.querySelectorAll('[data-ex]').forEach(b=>b.onclick=async()=>{ if(!confirm('Excluir esta foto?')) return; try{ await apiFoto('fotoExcluir',{id:+b.dataset.ex}); await refaz(); }catch(e){ infToast(e.message,true); } });
+  const inp=document.getElementById('fo-in'); if(inp) inp.onchange=async()=>{ const fs=Array.from(inp.files||[]); if(!fs.length) return; const t=document.getElementById('fo-txt'); let ok=0; const falhas=[];
+    for(let i=0;i<fs.length;i++){ t.textContent=`⏳ Enviando ${i+1} de ${fs.length}: ${fs[i].name}…`; try{ const foto=await infImgRedim(fs[i],1100,.82,false); const thumb=await infImgRedim(fs[i],200,.72,true); await apiFoto('fotoSalvar',{pessoa_id:p.id,foto,thumb}); ok++; }catch(e){ falhas.push(fs[i].name+' ('+e.message+')'); } }
+    await infFotosRecarregar(); infFicha(p.id,'fotos'); infRender(); infToast(ok+' foto(s) adicionada(s).'+(falhas.length?' Falhas: '+falhas.join('; '):''),!!falhas.length&&!ok); };
 }
 function infInjetarCss(){
   if(document.getElementById('inf-css')) return;
   const s=document.createElement('style'); s.id='inf-css';
   s.textContent=`
   .if-sm{padding:5px 11px;font-size:12px}
+  .if-av{border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);flex:none}
+  .if-fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}.if-foto{position:relative;background:#fff;border:1px solid #e6e2d3;border-radius:12px;padding:6px;box-shadow:0 1px 3px rgba(0,0,0,.08)}.if-foto img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block}.if-foto .pri{position:absolute;top:10px;left:10px;background:#e0b84a;color:#2a2000;font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:10px}.if-foto .lg{font-size:12px;color:#555;margin:4px 2px;min-height:14px}.if-foto .ac{display:flex;gap:4px}
   .if-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:10px}
   .if-kpi{background:#fff;border-radius:8px;padding:8px 11px;border-left:4px solid var(--khaki);box-shadow:0 1px 3px rgba(0,0,0,.06)}
   .if-kpi b{display:block;font-size:19px}.if-kpi span{font-size:11px;color:#777}
@@ -4254,7 +4296,7 @@ function infCadastro(c){
   c.innerHTML=`<div class="if-box"><div style="font-size:12px;color:#666;margin-bottom:6px"><b>${L.length}</b> de ${INF.pessoas.length} cadastrados</div>
    <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}${th('alvo','Alvo #')}<th></th></tr></thead><tbody>
    ${pg.map(p=>{ const s=infScore(p); const cr=Object.keys(infCrimesDe(p,F.de,F.ate)); const nv=INF.cat.niveis.find(n=>n[0]===p.nivel);
-     return `<tr class="cl" data-id="${p.id}"><td><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</td>
+     return `<tr class="cl" data-id="${p.id}"><td style="white-space:nowrap">${infAvatarImg(p,34)}<span style="display:inline-block;vertical-align:middle"><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</span></td>
       <td>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>${p.faccao_funcao?`<div style="color:#777;font-size:11px">${esc(p.faccao_funcao)}</div>`:''}`:'<span style="color:#aaa">—</span>'}</td>
       <td title="${esc(nv?nv[1]:'')}">${p.nivel||'—'}${p.cargo?`<div style="color:#777;font-size:11px">${esc(p.cargo)}</div>`:''}</td><td>${infBadge(p.status)}</td><td>${infRiscoHtml(p.risco)}</td>
       <td>${esc(p.bairro||'')}${p.lat?' 📍':''}</td><td>${esc(p.area||'')}</td><td style="max-width:240px">${cr.slice(0,4).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}${cr.length>4?`<span class="if-chip">+${cr.length-4}</span>`:''}</td>
@@ -4282,9 +4324,9 @@ function infFicha(id, aba){
   const p = id ? INF.cache.byId.get(id) : null;
   if(id && !p){ ov.remove(); return; }
   INF_FICHA.sel.crimes = p ? (p.crimes||[]).slice() : [];
-  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa'],['neural','🧠 Mapa neural']];
+  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['fotos','📷 Fotos'+(p?` (${infFotosDe(p.id).length})`:'')],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa'],['neural','🧠 Mapa neural']];
   ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-     <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
+     <h3 style="margin:0;display:flex;align-items:center">${p?infAvatarImg(p,44):''}${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
      <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn dourado if-sm" id="iff-apres">🎬 Apresentar</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
      <div class="if-tabs">${tabs.map(([k,l])=>`<span class="if-tab ${INF_FICHA.aba===k?'on':''}" data-ab="${k}" ${!p&&k!=='dados'?'style="opacity:.4;pointer-events:none"':''}>${l}</span>`).join('')}</div>
      <div id="iff-corpo"></div></div>`;
@@ -4297,7 +4339,7 @@ function infFicha(id, aba){
     document.getElementById('iff-apres').onclick=()=>{ infFecharFicha(); infApresentar(p.id); };
     const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
   }
-  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa,neural:infFichaNeural})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
+  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa,neural:infFichaNeural,fotos:infFichaFotos})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
 }
 let INF_CRIAR_CB=null; let INF_VPEND=null;
 function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); INF_CRIAR_CB=null; }
@@ -5106,7 +5148,7 @@ function presNav(itens,dossie){
    <div class="pr-links">${itens.map(([id,l])=>`<a href="#" data-go="${id}">${l}</a>`).join('')}</div>
    <div class="pr-act"><button id="pr-mask" class="pr-btn ghost" title="Oculta CPF/RG, mãe, pai, telefone e endereço">${PRES.mask?'👁️ Mostrar dados':'🙈 Ocultar dados sensíveis'}</button>${dossie&&INF.podeEditar?'<button id="pr-ficha" class="pr-btn ghost">✏️ Abrir ficha</button>':''}<button id="pr-x" class="pr-btn gold">✖ Sair (Esc)</button></div></div></nav>`; }
 function presSecao(id,kick,tit,sub,corpo,cls){ return `<section class="pr-sec ${cls||''}" id="${id}"><div class="pr-wrap"><div class="pr-kick">${kick}</div><h2>${tit}</h2>${sub?`<p class="pr-sub">${sub}</p>`:''}${corpo}</div></section>`; }
-function presAvatar(p,g){ const ini=(p.alcunha||p.nome||'?').trim().split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase(); return `<span class="pr-av ${g?'g':''}" style="--c:${infCorFaccao(p.faccao||p.rede)}">${esc(ini)}</span>`; }
+function presAvatar(p,g){ const ft=infFotosDe(p.id)[0]; if(ft) return `<span class="pr-av ${g?'g':''}" style="--c:${infCorFaccao(p.faccao||p.rede)}"><img src="${ft.thumb}" alt=""></span>`; const ini=(p.alcunha||p.nome||'?').trim().split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase(); return `<span class="pr-av ${g?'g':''}" style="--c:${infCorFaccao(p.faccao||p.rede)}">${esc(ini)}</span>`; }
 function presCard(p,extra){ const a=infAlvo().get(p.id)||{}; return `<div class="pr-card" data-pp="${p.id}">${presAvatar(p)}<div class="pr-ci"><b>${esc(p.alcunha||infCurto(p))}</b><small>${esc(p.nome)}</small><div>${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''}</div>${extra||''}</div>${a.posGeral?`<span class="pr-pos" title="Posição no ranking de alvos">#${a.posGeral}</span>`:''}</div>`; }
 function presHomeHtml(){
   const P=INF.pessoas, govIds=new Set(INF.gov.map(g=>g.pessoa_id)); const redes=new Set(INF.gov.map(g=>g.rede||(INF.cache.byId.get(g.pessoa_id)||{}).rede||'').filter(Boolean));
@@ -5143,13 +5185,14 @@ function presDossieHtml(id){
   const p=INF.cache.byId.get(id); if(!p){ PRES.view='home'; return presHomeHtml(); }
   const a=infAlvo().get(id)||{}; const nv=INF.cat.niveis.find(n=>n[0]===p.nivel); const gL=INF.cache.govP.get(id)||[]; const adj=INF.cache.adj.get(id)||[]; const regs=INF.cache.regs.get(id)||[]; const locs=INF.cache.locs.get(id)||[]; const dd=INF.cache.ddusDe.get(id)||[]; const sn=INF.cache.alvoP.get(id);
   const pv=v=>PRES.mask?'<span style="letter-spacing:2px;color:#999">••••••</span>':esc(v||'—'); const it=(l,v)=>`<div class="pr-it"><span>${l}</span><b>${v||'—'}</b></div>`;
-  const nav=[['pd-dados','Dados'],...(gL.length?[['pd-gov','Governança']]:[]),['pd-alvo','Alvo'],['pd-vinc','Vínculos'],['pd-teia','Teia'],['pd-neural','Neural'],['pd-mapa','Mapa'],...(dd.length?[['pd-dd','Denúncias']]:[]),...(regs.length||locs.length?[['pd-reg','Registros']]:[])];
+  const nav=[['pd-dados','Dados'],...(infFotosDe(id).length?[['pd-fotos','Fotos']]:[]),...(gL.length?[['pd-gov','Governança']]:[]),['pd-alvo','Alvo'],['pd-vinc','Vínculos'],['pd-teia','Teia'],['pd-neural','Neural'],['pd-mapa','Mapa'],...(dd.length?[['pd-dd','Denúncias']]:[]),...(regs.length||locs.length?[['pd-reg','Registros']]:[])];
   const relTxt=v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; return sub?(v.a_id===id?`Superior de ${o.nome}`:`Subordinado a ${o.nome}`):v.tipo; };
   return presNav(nav,true)+`<header class="pr-hero dos"><div class="pr-hero-in left">${presAvatar(p,1)}<div><div class="pr-kick">Dossiê do infrator</div><h1>${esc(p.alcunha?'“'+p.alcunha+'”':p.nome)}</h1><p class="nm">${esc(p.nome)}${p.nascimento?' · '+infIdade(p.nascimento)+' anos':''}</p>
     <div class="pr-badges">${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''} ${nv?`<span class="pr-chip">Nível ${p.nivel} · ${esc(nv[1])}</span>`:''} ${p.cargo?`<span class="pr-chip">${esc(p.cargo)}</span>`:''} <span class="pr-chip">Risco ${p.risco||1}/5</span> ${a.posGeral?`<span class="pr-chip gold">🎯 #${a.posGeral} em alvos · ${a.total} pts</span>`:''}</div>
     <div class="pr-kpis sm"><div><b>${adj.length}</b><span>Vínculos</span></div><div><b>${gL.length}</b><span>Funções na governança</span></div><div><b>${regs.length}</b><span>Registros</span></div><div><b>${locs.length}</b><span>Locais</span></div><div><b>${dd.length}</b><span>Denúncias</span></div></div></div></div></header>`
    +presSecao('pd-dados','Perfil','Dados do infrator','',`<div class="pr-its">${it('Alcunha',esc(p.alcunha))}${it('Nascimento',p.nascimento?esc(infDataBR(p.nascimento)):'')}${it('CPF / RG',pv(p.documento))}${it('Mãe',pv(p.mae))}${it('Pai',pv(p.pai))}${it('Telefone',pv(p.telefone))}${it('Endereço',pv(p.endereco))}${it('Bairro',esc(p.bairro))}${it('Cidade',esc(p.cidade))}${it('Área',esc(p.area))}${it('Rede',esc(p.rede))}${it('Facção / função',esc([p.faccao,p.faccao_funcao].filter(Boolean).join(' — ')))}${it('Batalhão',esc(p.batalhao))}${it('Companhia',esc(p.companhia))}${it('Características',esc(p.fisico))}</div>
      ${(p.crimes||[]).length?`<div style="margin-top:14px">${p.crimes.map(c=>`<span class="if-chip">${esc(c)}</span>`).join('')}</div>`:''}${(p.tags||[]).length?`<div style="margin-top:8px">${p.tags.map(c=>`<span class="pr-chip">#${esc(c)}</span>`).join(' ')}</div>`:''}${p.obs?`<p class="pr-obs">${esc(p.obs)}</p>`:''}`)
+   +(infFotosDe(id).length?presSecao('pd-fotos','Imagens','Fotos',`${infFotosDe(id).length} foto(s). Clique para ampliar.`,`<div class="pr-gal">${infFotosDe(id).map((f,i)=>`<figure data-fz="${i}"><img src="${f.thumb}" alt="">${f.legenda?`<figcaption>${esc(f.legenda)}</figcaption>`:''}</figure>`).join('')}</div>`):'')
    +(gL.length?presSecao('pd-gov','Organização','Governança criminal','',`<div class="pr-grid">${gL.map(g=>`<div class="pr-card static"><div class="pr-ci"><span class="if-b" style="background:#6b4c9a">${esc(g.papel)}</span><b>${esc(g.regiao||'(sem região)')}</b><small>${esc([g.companhia,g.batalhao,g.rede].filter(Boolean).join(' · '))}</small>${(g.bairros||[]).length?`<small>Bairros: ${esc(g.bairros.join(', '))}</small>`:''}${g.obs?`<small>${esc(g.obs)}</small>`:''}</div></div>`).join('')}</div>`,'dark'):'')
    +presSecao('pd-alvo','Prioridade','Posição como alvo','',`<div class="pr-its"><div class="pr-it big"><span>Posição geral</span><b>#${a.posGeral||'—'} <small>de ${INF.pessoas.length}</small></b></div><div class="pr-it big"><span>Total</span><b>${a.total??'—'} pts</b></div><div class="pr-it big"><span>Quantitativo</span><b>${a.quant??'—'}${a.posQuant?` <small>#${a.posQuant}</small>`:''}</b></div><div class="pr-it big"><span>Qualitativo</span><b>${a.sel?a.qual:'—'}${a.sel&&a.posQual?` <small>#${a.posQual}</small>`:''}</b></div>${a.sel?`<div class="pr-it big"><span>Pontuação sensor</span><b>${a.sensor}/10</b></div>`:''}</div>${sn&&sn.obs?`<p class="pr-obs">${esc(sn.obs)}</p>`:''}${a.hits?`<div class="pr-box">${infAlvoDetalheHtml(a)}</div>`:''}`)
    +presSecao('pd-vinc','Rede','Vínculos',adj.length?'Clique para abrir o dossiê do vinculado.':'',adj.length?`<div class="pr-grid">${adj.map(v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); return presCard(o,`<small class="rel" style="--c:${infCorVinculo(v.tipo)}">${esc(relTxt(v))} · força ${v.forca||2}/3</small>${v.obs?`<small class="ob">“${esc(v.obs)}”</small>`:''}`); }).join('')}</div>`:'<p style="color:#888">Nenhum vínculo cadastrado.</p>','')
@@ -5161,6 +5204,7 @@ function presDossieHtml(id){
    +`<footer class="pr-foot">4ª Cia PM Ind GER · Uso restrito</footer>`;
 }
 function presDossieBind(ov,id){
+  ov.querySelectorAll('[data-fz]').forEach(f=>f.onclick=()=>infFotoLightbox(id,+f.dataset.fz));
   const draw=()=>{ if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } infTeia(ov.querySelector('#pd-teiabox'),{pid:id,prof:INF_FICHA.prof||1,re:draw}); };
   const pf=ov.querySelector('#pd-prof'); if(pf) pf.onchange=e=>{ INF_FICHA.prof=+e.target.value; draw(); };
   setTimeout(()=>{ if(PRES.view!==id) return; draw(); infMapa(ov.querySelector('#pd-mapbox'),{pid:id,prof:INF_FICHA.prof||1,re:()=>{}}); infNeural(ov.querySelector('#pd-neubox'),{seed:[id],expand:[id]}); },50);
@@ -5220,6 +5264,8 @@ function presCss(){
   #inf-pres .pr-ci small.ob{font-style:italic}
   #inf-pres .pr-pos{position:absolute;top:10px;right:12px;font-weight:800;color:#a8861f;font-size:13px}
   #inf-pres .pr-av{flex:none;width:46px;height:46px;border-radius:50%;background:var(--c);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;box-shadow:0 4px 12px -4px rgba(0,0,0,.4);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+  #inf-pres .pr-av img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+  #inf-pres .pr-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}#inf-pres .pr-gal figure{margin:0;cursor:zoom-in}#inf-pres .pr-gal img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;box-shadow:0 10px 24px -12px rgba(0,0,0,.5);transition:transform .15s}#inf-pres .pr-gal img:hover{transform:scale(1.03)}#inf-pres .pr-gal figcaption{font-size:12px;color:#6f6a58;margin-top:4px}
   #inf-pres .pr-av.g{width:110px;height:110px;font-size:40px;border:4px solid rgba(224,184,74,.6)}
   #inf-pres .pr-ranking{display:flex;flex-direction:column;gap:10px}
   #inf-pres .pr-rk{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:12px 16px;cursor:pointer;transition:background .15s,transform .15s}
