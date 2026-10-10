@@ -4199,7 +4199,7 @@ function infRender(){
    <div class="if-kpis">${kp.map(([l,v])=>`<div class="if-kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
      <div class="if-tabs" style="margin:0">${tabs.map(([k,l])=>`<span class="if-tab ${INF.sub===k?'on':''}" data-sub="${k}">${l}</span>`).join('')}</div>
-     <div style="display:flex;gap:6px">${!['config','gov','alvo'].includes(INF.sub)?`<button class="btn secundario if-sm" id="if-fbtn">🔎 Filtros${infNFiltros()?' ('+infNFiltros()+' ativos)':''} ${INF.filAberto?'▴':'▾'}</button>`:''}${INF.podeEditar?'<button class="btn if-sm" id="if-novo">+ Novo infrator</button><button class="btn dourado if-sm" id="if-impddu">📎 Importar DDU (PDF)</button>':''}<button class="btn secundario if-sm" id="if-csv">⬇️ CSV</button></div></div>
+     <div style="display:flex;gap:6px">${!['config','gov','alvo'].includes(INF.sub)?`<button class="btn secundario if-sm" id="if-fbtn">🔎 Filtros${infNFiltros()?' ('+infNFiltros()+' ativos)':''} ${INF.filAberto?'▴':'▾'}</button>`:''}<button class="btn dourado if-sm" id="if-apres">🎬 Apresentar</button>${INF.podeEditar?'<button class="btn if-sm" id="if-novo">+ Novo infrator</button><button class="btn dourado if-sm" id="if-impddu">📎 Importar DDU (PDF)</button>':''}<button class="btn secundario if-sm" id="if-csv">⬇️ CSV</button></div></div>
    ${['config','gov','alvo'].includes(INF.sub)?'':`<div class="if-fil" id="if-fil" style="${INF.filAberto?'':'display:none'}">
      <div style="flex:1;min-width:200px"><label>Busca (nome, alcunha, documento, mãe, endereço, observações, etiquetas)</label><input id="ifx-busca" value="${esc(F.busca)}"></div>
      <div>${'<label>Área</label>'+sel('ifx-area',infAreas(),F.area,'Todas')}</div>
@@ -4220,6 +4220,7 @@ function infRender(){
      <div><button class="btn secundario if-sm" id="ifx-limpar">Limpar</button></div></div>`}
    <div id="inf-corpo"></div></div>`;
   box.querySelectorAll('[data-sub]').forEach(e=>e.onclick=()=>{ INF.sub=e.dataset.sub; infRender(); });
+  const ap=document.getElementById('if-apres'); if(ap) ap.onclick=()=>infApresentar(null);
   const n=document.getElementById('if-novo'); if(n) n.onclick=()=>infFicha(null);
   const im=document.getElementById('if-impddu'); if(im) im.onclick=()=>infImportarDdu(null);
   document.getElementById('if-csv').onclick=infCsv;
@@ -4251,17 +4252,18 @@ function infCadastro(c){
   const PP=40, np=Math.max(1,Math.ceil(L.length/PP)); if(INF.pag>=np) INF.pag=np-1; const pg=L.slice(INF.pag*PP, INF.pag*PP+PP);
   const th=(k,l)=>`<th data-o="${k}">${l}${o.k===k?(o.d>0?' ▲':' ▼'):''}</th>`;
   c.innerHTML=`<div class="if-box"><div style="font-size:12px;color:#666;margin-bottom:6px"><b>${L.length}</b> de ${INF.pessoas.length} cadastrados</div>
-   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}${th('alvo','Alvo #')}</tr></thead><tbody>
+   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}${th('alvo','Alvo #')}<th></th></tr></thead><tbody>
    ${pg.map(p=>{ const s=infScore(p); const cr=Object.keys(infCrimesDe(p,F.de,F.ate)); const nv=INF.cat.niveis.find(n=>n[0]===p.nivel);
      return `<tr class="cl" data-id="${p.id}"><td><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</td>
       <td>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>${p.faccao_funcao?`<div style="color:#777;font-size:11px">${esc(p.faccao_funcao)}</div>`:''}`:'<span style="color:#aaa">—</span>'}</td>
       <td title="${esc(nv?nv[1]:'')}">${p.nivel||'—'}${p.cargo?`<div style="color:#777;font-size:11px">${esc(p.cargo)}</div>`:''}</td><td>${infBadge(p.status)}</td><td>${infRiscoHtml(p.risco)}</td>
       <td>${esc(p.bairro||'')}${p.lat?' 📍':''}</td><td>${esc(p.area||'')}</td><td style="max-width:240px">${cr.slice(0,4).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}${cr.length>4?`<span class="if-chip">+${cr.length-4}</span>`:''}</td>
-      <td style="text-align:center" title="${esc((INF.cache.ddusDe.get(p.id)||[]).map(d=>d.protocolo).join(', '))}">${(INF.cache.ddusDe.get(p.id)||[]).length||'—'}</td><td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td><td style="text-align:center">${infAlvoPosHtml(p.id)}</td></tr>`; }).join('')||'<tr><td colspan="12" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
+      <td style="text-align:center" title="${esc((INF.cache.ddusDe.get(p.id)||[]).map(d=>d.protocolo).join(', '))}">${(INF.cache.ddusDe.get(p.id)||[]).length||'—'}</td><td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td><td style="text-align:center">${infAlvoPosHtml(p.id)}</td><td><button class="btn dourado if-sm" data-apres="${p.id}" title="Apresentar este infrator">🎬</button></td></tr>`; }).join('')||'<tr><td colspan="13" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
    </tbody></table></div>
    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario if-sm" id="if-ant" ${INF.pag<=0?'disabled':''}>‹</button> Página ${INF.pag+1} de ${np} <button class="btn secundario if-sm" id="if-prox" ${INF.pag>=np-1?'disabled':''}>›</button></div></div>`;
   c.querySelectorAll('th[data-o]').forEach(t=>t.onclick=()=>{ const k=t.dataset.o; INF.ord=INF.ord.k===k?{k,d:-o.d}:{k,d:(k==='score'||k==='risco'||k==='grau'||k==='ddu'||k==='alvo'?-1:1)}; infCorpo(); });
-  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=()=>infFicha(+t.dataset.id));
+  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=ev=>{ if(ev.target.closest('[data-apres]')) return; infFicha(+t.dataset.id); });
+  c.querySelectorAll('[data-apres]').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); infApresentar(+b.dataset.apres); });
   document.getElementById('if-ant').onclick=()=>{INF.pag--;infCorpo();}; document.getElementById('if-prox').onclick=()=>{INF.pag++;infCorpo();};
 }
 function infCsv(){
@@ -4283,7 +4285,7 @@ function infFicha(id, aba){
   const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa']];
   ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
      <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
-     <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn dourado if-sm" id="iff-apres">🎬 Apresentar</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
      <div class="if-tabs">${tabs.map(([k,l])=>`<span class="if-tab ${INF_FICHA.aba===k?'on':''}" data-ab="${k}" ${!p&&k!=='dados'?'style="opacity:.4;pointer-events:none"':''}>${l}</span>`).join('')}</div>
      <div id="iff-corpo"></div></div>`;
   ov.querySelectorAll('[data-ab]').forEach(e=>e.onclick=()=>{ INF_FICHA.aba=e.dataset.ab; infFicha(id,e.dataset.ab); });
@@ -4292,6 +4294,7 @@ function infFicha(id, aba){
     document.getElementById('iff-teia').onclick=()=>infFicha(p.id,'vinc');
     document.getElementById('iff-mapa').onclick=()=>infFicha(p.id,'mapa');
     document.getElementById('iff-print').onclick=()=>infImprimirFicha(p.id);
+    document.getElementById('iff-apres').onclick=()=>{ infFecharFicha(); infApresentar(p.id); };
     const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
   }
   ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
@@ -4425,7 +4428,7 @@ function infFichaReg(c,p){
 
 // ---------- mapa ----------
 async function infMapa(c,op){
-  const M=INF.M; const {lista,ids,vis:visSet}=op?infConjuntoPessoa(op.pid,op.prof):infConjunto(); const rr=()=>op?op.re():rr();
+  const M=INF.M; const {lista,ids,vis:visSet}=op?(op.todos?infConjuntoTodos():infConjuntoPessoa(op.pid,op.prof)):infConjunto(); const rr=()=>op?op.re():rr();
   const corPor=p=> M.cor==='status'?(INF_STCOR[p.status]||'#888') : M.cor==='risco'?['#9a9a9a','#c7b24a','#e0a02a','#d9622b','#a4202a','#a4202a'][p.risco||1] : M.cor==='nivel'?(p.nivel?INF_PAL[(p.nivel-1)%INF_PAL.length]:'#9a9a9a') : infCorFaccao(p.faccao);
   const pessoas=INF.pessoas.filter(p=>visSet.has(p.id));
   c.innerHTML=`<div class="if-mapwrap"><div class="if-box" style="margin:0"><h3>Camadas</h3>
@@ -4438,7 +4441,7 @@ async function infMapa(c,op){
   c.querySelectorAll('[data-m]').forEach(e=>e.onchange=()=>{ M[e.dataset.m]=e.checked; rr(); }); document.getElementById('ifm-cor').onchange=e=>{ M.cor=e.target.value; rr(); };
   const map=L.map('if-mapa',{preferCanvas:true,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}).setView([-21.7642,-43.3503],12,{animate:false}); INF.mapa=map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-  const pts=[]; let semCoord=0, vinSem=0; const abrir=id=>`<a href="#" onclick="infFicha(${id});return false">Abrir ficha</a>`;
+  const pts=[]; let semCoord=0, vinSem=0; const abrir=id=>`<a href="#" onclick="infAbrir(${id});return false">Abrir ficha</a>`;
   const pop=p=>`<b>${esc(infNomeExib(p))}</b><br>${esc(p.faccao||'sem facção')}${p.nivel?' · nível '+p.nivel:''} · ${esc(INF_STATUS[p.status]||'')}<br>${esc(p.endereco||'')} ${esc(p.bairro||'')}<br>${abrir(p.id)}`;
   pessoas.forEach(p=>{
     const cor=corPor(p); const filtrado=!INF.F.vizinhos || ids.has(p.id);
@@ -4464,7 +4467,7 @@ async function infMapa(c,op){
 
 // ---------- teia (rede) ----------
 async function infTeia(c,op){
-  const T=INF.T; const {lista,ids,vis:visSet}=op?infConjuntoPessoa(op.pid,op.prof):infConjunto(); const rr=()=>op?op.re():rr();
+  const T=INF.T; const {lista,ids,vis:visSet}=op?(op.todos?infConjuntoTodos():infConjuntoPessoa(op.pid,op.prof)):infConjunto(); const rr=()=>op?op.re():rr();
   let edges=INF.vinculos.filter(v=>visSet.has(v.a_id)&&visSet.has(v.b_id)&&INF.cache.byId.has(v.a_id)&&INF.cache.byId.has(v.b_id));
   const comArestas=new Set(); edges.forEach(v=>{ comArestas.add(v.a_id); comArestas.add(v.b_id); });
   let pessoas=INF.pessoas.filter(p=>visSet.has(p.id)); if(!T.isolados) pessoas=pessoas.filter(p=>comArestas.has(p.id));
@@ -4502,9 +4505,9 @@ async function infTeia(c,op){
       <div>Prioridade: <b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b> · ${s.grau} vínculos · ${s.n} crimes</div>
       <div style="margin:6px 0">${Object.keys(infCrimesDe(p)).slice(0,6).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}</div>
       <div style="max-height:150px;overflow:auto">${L.map(v=>{ const o=INF.cache.byId.get(v.a_id===p.id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; const rel=sub?((v.a_id===p.id)?'superior de':'subordinado a'):v.tipo; return `<div style="font-size:11.5px">• ${esc(rel)} <a href="#" data-p="${o.id}">${esc(infCurto(o))}</a></div>`; }).join('')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn if-sm" onclick="infFicha(${p.id})">Abrir ficha</button>${op?'':`<button class="btn secundario if-sm" onclick="INF.F.foco='${p.id}';infRender()">🎯 Focar rede</button>`}</div>`;
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn if-sm" onclick="infAbrir(${p.id})">Abrir ficha</button>${op?'':`<button class="btn secundario if-sm" onclick="INF.F.foco='${p.id}';infRender()">🎯 Focar rede</button>`}</div>`;
     side.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{ e.preventDefault(); net.selectNodes([+a.dataset.p]); net.focus(+a.dataset.p,{scale:1.1,animation:true}); }); });
-  net.on('doubleClick',ev=>{ if(ev.nodes.length) infFicha(ev.nodes[0]); });
+  net.on('doubleClick',ev=>{ if(ev.nodes.length) infAbrir(ev.nodes[0]); });
   document.getElementById('ift-fit').onclick=()=>net.fit({animation:true});
   document.getElementById('ift-png').onclick=()=>{ const cv=document.querySelector('#if-teia canvas'); if(!cv) return; const a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='teia-infratores.png'; a.click(); };
   const fac=[...new Set(pessoas.map(p=>p.faccao||''))].map(f=>`<span><i style="background:${infCorFaccao(f)}"></i>${esc(f||'Sem facção')}</span>`).join('');
@@ -5061,6 +5064,185 @@ function infAlvoRegras(b){
     document.getElementById('ar-ok').onclick=async()=>{ const m=document.getElementById('ar-m'); m.textContent='Salvando…'; try{ await apiInf('infConfigSalvar',{chave:'alvo',valor:{sensorPeso:cfg.sensorPeso,regras:cfg.regras}}); INF.alvoCfg=JSON.parse(JSON.stringify(cfg)); INF.config.alvo=INF.alvoCfg; INF.cache.alvoSc=null; infToast('Regras salvas. Ranking recalculado.'); infAlvoTab(document.getElementById('inf-corpo')); }catch(e){ m.innerHTML=`<span style="color:#a4202a">${esc(e.message)}</span>`; } };
   };
   draw();
+}
+
+// ================= MODO APRESENTACAO (landing page) =================
+const PRES={on:false,pila:[],view:'home',mask:false,alvoModo:'geral',alvoN:10,gridN:24,busca:'',status:'',rede:''};
+function infAbrir(id){ if(PRES.on) presIr(id); else infFicha(id); }
+function infConjuntoTodos(){ const ids=new Set(INF.pessoas.map(p=>p.id)); return {lista:INF.pessoas.slice(),ids,vis:ids}; }
+function infApresentar(pid){
+  infInjetarCss(); presCss();
+  PRES.on=true; PRES.pila=[]; PRES.view=pid||'home';
+  let ov=document.getElementById('inf-pres'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='inf-pres'; document.body.appendChild(ov); document.body.style.overflow='hidden';
+  const k=e=>{ if(e.key==='Escape'){ if(document.getElementById('inf-ficha')) return; presFechar(); } }; document.addEventListener('keydown',k); ov._k=k;
+  presRender();
+}
+function presFechar(){ const ov=document.getElementById('inf-pres'); if(ov){ document.removeEventListener('keydown',ov._k); ov.remove(); } PRES.on=false; document.body.style.overflow=''; if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; } }
+function presIr(id){ if(PRES.view!==id) PRES.pila.push(PRES.view); PRES.view=id; presRender(true); }
+function presVoltar(){ PRES.view=PRES.pila.length?PRES.pila.pop():'home'; presRender(true); }
+function presRender(topo){
+  const ov=document.getElementById('inf-pres'); if(!ov) return;
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  const sc=ov.scrollTop; ov.innerHTML=PRES.view==='home'?presHomeHtml():presDossieHtml(PRES.view);
+  ov.scrollTop=topo?0:sc;
+  ov.querySelectorAll('[data-go]').forEach(a=>a.onclick=e=>{ e.preventDefault(); const t=ov.querySelector('#'+a.dataset.go); if(t) ov.scrollTo({top:t.offsetTop-56,behavior:'smooth'}); });
+  ov.querySelectorAll('[data-pp]').forEach(a=>a.onclick=e=>{ e.preventDefault(); e.stopPropagation(); presIr(+a.dataset.pp); });
+  ov.querySelectorAll('[data-gpid]').forEach(a=>a.onclick=e=>{ e.stopPropagation(); presIr(+a.dataset.gpid); });
+  const q=s=>ov.querySelector(s);
+  q('#pr-x').onclick=presFechar; const b=q('#pr-back'); if(b) b.onclick=presVoltar; const h=q('#pr-home'); if(h) h.onclick=()=>{ PRES.pila=[]; PRES.view='home'; presRender(true); };
+  const m=q('#pr-mask'); if(m) m.onclick=()=>{ PRES.mask=!PRES.mask; presRender(); };
+  const fi=q('#pr-ficha'); if(fi) fi.onclick=()=>{ infFicha(PRES.view); const f=document.getElementById('inf-ficha'); if(f) f.style.zIndex=9700; };
+  if(PRES.view==='home') presHomeBind(ov); else presDossieBind(ov,PRES.view);
+}
+function presNav(itens,dossie){
+  return `<nav class="pr-nav"><div class="pr-nav-in">${dossie?`<button id="pr-back" class="pr-btn">← Voltar</button><button id="pr-home" class="pr-btn ghost">⌂ Início</button>`:`<span class="pr-brand">🛡️ 4ª Cia PM Ind GER</span>`}
+   <div class="pr-links">${itens.map(([id,l])=>`<a href="#" data-go="${id}">${l}</a>`).join('')}</div>
+   <div class="pr-act"><button id="pr-mask" class="pr-btn ghost" title="Oculta CPF/RG, mãe, pai, telefone e endereço">${PRES.mask?'👁️ Mostrar dados':'🙈 Ocultar dados sensíveis'}</button>${dossie&&INF.podeEditar?'<button id="pr-ficha" class="pr-btn ghost">✏️ Abrir ficha</button>':''}<button id="pr-x" class="pr-btn gold">✖ Sair (Esc)</button></div></div></nav>`; }
+function presSecao(id,kick,tit,sub,corpo,cls){ return `<section class="pr-sec ${cls||''}" id="${id}"><div class="pr-wrap"><div class="pr-kick">${kick}</div><h2>${tit}</h2>${sub?`<p class="pr-sub">${sub}</p>`:''}${corpo}</div></section>`; }
+function presAvatar(p,g){ const ini=(p.alcunha||p.nome||'?').trim().split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase(); return `<span class="pr-av ${g?'g':''}" style="--c:${infCorFaccao(p.faccao||p.rede)}">${esc(ini)}</span>`; }
+function presCard(p,extra){ const a=infAlvo().get(p.id)||{}; return `<div class="pr-card" data-pp="${p.id}">${presAvatar(p)}<div class="pr-ci"><b>${esc(p.alcunha||infCurto(p))}</b><small>${esc(p.nome)}</small><div>${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''}</div>${extra||''}</div>${a.posGeral?`<span class="pr-pos" title="Posição no ranking de alvos">#${a.posGeral}</span>`:''}</div>`; }
+function presHomeHtml(){
+  const P=INF.pessoas, govIds=new Set(INF.gov.map(g=>g.pessoa_id)); const redes=new Set(INF.gov.map(g=>g.rede||(INF.cache.byId.get(g.pessoa_id)||{}).rede||'').filter(Boolean));
+  const logo=(document.querySelector('#sidebar .cab img')||{}).src||'';
+  const kp=[[P.length,'Cadastrados'],[govIds.size,'Na governança criminal'],[P.filter(p=>p.status==='foragido').length,'Foragidos'],[P.filter(p=>p.status==='preso').length,'Presos'],[INF.vinculos.length,'Vínculos mapeados'],[INF.registros.length,'Registros de crimes']];
+  const nav=[['pr-gov','Governança'],['pr-alvo','Alvos prioritários'],['pr-mapa','Mapa'],['pr-teia','Teia de vínculos'],['pr-lista','Infratores']];
+  return presNav(nav,false)+`<header class="pr-hero" id="pr-top"><div class="pr-hero-in">${logo?`<img src="${logo}" class="pr-logo" alt="">`:''}<div class="pr-kick">Análise de inteligência · Juiz de Fora / MG</div><h1>Infratores &amp; Governança Criminal</h1><p>4ª Cia PM Ind GER — panorama das lideranças, vínculos e alvos prioritários.</p>
+    <div class="pr-ctas"><a href="#" data-go="pr-gov" class="pr-btn gold big">Ver governança</a><a href="#" data-go="pr-alvo" class="pr-btn ghost big">Alvos prioritários</a></div>
+    <div class="pr-kpis">${kp.map(([n,l])=>`<div><b>${n}</b><span>${l}</span></div>`).join('')}</div></div><div class="pr-sig">🔒 Informação sigilosa — uso restrito à atividade de inteligência/segurança pública.</div></header>`
+   +presSecao('pr-gov','01 · Governança','Organograma das lideranças','Clique em qualquer integrante para abrir o dossiê completo.',`<div id="pr-govfil" class="pr-fil"></div><div id="pr-govorg"></div>`)
+   +presSecao('pr-alvo','02 · Prioridade','Alvos prioritários','Ranking pela pontuação quantitativa (cadastro) somada à qualitativa (análise + sensor).',`<div class="pr-fil"><select id="pr-am"><option value="geral" ${PRES.alvoModo==='geral'?'selected':''}>Geral</option><option value="quant" ${PRES.alvoModo==='quant'?'selected':''}>Quantitativo</option><option value="qual" ${PRES.alvoModo==='qual'?'selected':''}>Qualitativo (selecionados)</option></select><select id="pr-an">${[5,10,20,50].map(n=>`<option value="${n}" ${PRES.alvoN===n?'selected':''}>Top ${n}</option>`).join('')}</select></div><div id="pr-alvos" class="pr-ranking"></div>`,'dark')
+   +presSecao('pr-mapa','03 · Território','Mapa','Residências, locais de atuação e crimes. Marcadores abrem o dossiê.',`<div id="pr-mapbox"></div>`)
+   +presSecao('pr-teia','04 · Conexões','Teia de vínculos','Toque numa pessoa para ver o resumo; duplo clique abre o dossiê.',`<div id="pr-teiabox"></div>`,'dark')
+   +presSecao('pr-lista','05 · Cadastro','Infratores','Busque e abra o dossiê individual.',`<div class="pr-fil"><input id="pr-b" placeholder="Buscar nome, vulgo, bairro…" value="${esc(PRES.busca)}"><select id="pr-s"><option value="">Todas as situações</option>${Object.entries(INF_STATUS).map(([k,v])=>`<option value="${k}" ${PRES.status===k?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="pr-r"><option value="">Todas as redes</option>${infRedes().map(r=>`<option ${PRES.rede===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div><div id="pr-grid" class="pr-grid"></div><div style="text-align:center;margin-top:16px" id="pr-mais"></div>`)
+   +`<footer class="pr-foot">4ª Cia PM Ind GER · Uso restrito · Gerado em ${new Date().toLocaleDateString('pt-BR')}</footer>`;
+}
+function presHomeBind(ov){
+  const fil=ov.querySelector('#pr-govfil'); const G=INF.G; const sel=(id,ops,val,t)=>`<select id="${id}"><option value="">${t}</option>${ops.map(o=>`<option ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  const drawGov=()=>{ ov.querySelector('#pr-govorg').innerHTML=infGovOrgHtml(infGovLinhas()); ov.querySelectorAll('#pr-govorg [data-gpid]').forEach(a=>a.onclick=()=>presIr(+a.dataset.gpid)); };
+  fil.innerHTML=sel('pg-r',infRedes(),G.rede,'Todas as redes')+sel('pg-b',infBatalhoes(),G.batalhao,'Todos os batalhões')+sel('pg-c',infCompanhias(),G.companhia,'Todas as companhias')+sel('pg-ba',[...new Set([...INF.gov.flatMap(g=>g.bairros||[])])].sort(),G.bairro,'Todos os bairros');
+  [['pg-r','rede'],['pg-b','batalhao'],['pg-c','companhia'],['pg-ba','bairro']].forEach(([i,k])=>ov.querySelector('#'+i).onchange=e=>{ G[k]=e.target.value; drawGov(); }); drawGov();
+  const S=infAlvo(); const drawAlvo=()=>{ const ch={geral:'total',quant:'quant',qual:'qual'}[PRES.alvoModo]; let L=INF.pessoas.filter(p=>PRES.alvoModo!=='qual'||S.get(p.id).sel); L.sort((x,y)=>S.get(y.id)[ch]-S.get(x.id)[ch]||S.get(y.id).total-S.get(x.id).total); L=L.slice(0,PRES.alvoN); const max=Math.max(1,...L.map(p=>S.get(p.id)[ch]));
+    ov.querySelector('#pr-alvos').innerHTML=L.map((p,i)=>{ const a=S.get(p.id); return `<div class="pr-rk" data-pp="${p.id}"><span class="n">${i+1}</span>${presAvatar(p)}<div class="who"><b>${esc(infNomeExib(p))}</b><small>${esc([p.rede||p.faccao,p.companhia,p.bairro].filter(Boolean).join(' · '))}</small></div><div class="bar"><i style="width:${Math.max(2,a[ch]/max*100)}%"></i></div><span class="pt">${a[ch].toLocaleString('pt-BR',{maximumFractionDigits:1})}</span>${a.sel?`<span class="sn" title="Pontuação sensor">★ ${a.sensor}</span>`:''}</div>`; }).join('')||'<p style="color:#aaa">Nenhum infrator selecionado.</p>';
+    ov.querySelectorAll('#pr-alvos [data-pp]').forEach(a=>a.onclick=()=>presIr(+a.dataset.pp)); };
+  ov.querySelector('#pr-am').onchange=e=>{ PRES.alvoModo=e.target.value; drawAlvo(); }; ov.querySelector('#pr-an').onchange=e=>{ PRES.alvoN=+e.target.value; drawAlvo(); }; drawAlvo();
+  const grid=()=>{ const q=infNorm(PRES.busca); const L=INF.pessoas.filter(p=>(!PRES.status||p.status===PRES.status)&&(!PRES.rede||(p.rede||p.faccao)===PRES.rede)&&(!q||infNorm([p.nome,p.alcunha,p.bairro,p.documento].join(' ')).includes(q))).sort((a,b)=>((infAlvo().get(a.id)||{}).posGeral||1e9)-((infAlvo().get(b.id)||{}).posGeral||1e9));
+    ov.querySelector('#pr-grid').innerHTML=L.slice(0,PRES.gridN).map(p=>presCard(p,`<small>${esc(p.bairro||'')}</small>`)).join('')||'<p style="color:#888">Ninguém encontrado.</p>';
+    ov.querySelectorAll('#pr-grid [data-pp]').forEach(a=>a.onclick=()=>presIr(+a.dataset.pp)); ov.querySelector('#pr-mais').innerHTML=L.length>PRES.gridN?`<button class="pr-btn gold" id="pr-more">Mostrar mais (${L.length-PRES.gridN})</button>`:''; const mb=ov.querySelector('#pr-more'); if(mb) mb.onclick=()=>{ PRES.gridN+=24; grid(); }; };
+  let tb; ov.querySelector('#pr-b').oninput=e=>{ PRES.busca=e.target.value; clearTimeout(tb); tb=setTimeout(()=>{ PRES.gridN=24; grid(); },200); }; ov.querySelector('#pr-s').onchange=e=>{ PRES.status=e.target.value; grid(); }; ov.querySelector('#pr-r').onchange=e=>{ PRES.rede=e.target.value; grid(); }; grid();
+  setTimeout(()=>{ if(PRES.view!=='home') return; infMapa(ov.querySelector('#pr-mapbox'),{todos:true,re:()=>{}}); infTeia(ov.querySelector('#pr-teiabox'),{todos:true,re:()=>presRender()}); },50);
+}
+function presDossieHtml(id){
+  const p=INF.cache.byId.get(id); if(!p){ PRES.view='home'; return presHomeHtml(); }
+  const a=infAlvo().get(id)||{}; const nv=INF.cat.niveis.find(n=>n[0]===p.nivel); const gL=INF.cache.govP.get(id)||[]; const adj=INF.cache.adj.get(id)||[]; const regs=INF.cache.regs.get(id)||[]; const locs=INF.cache.locs.get(id)||[]; const dd=INF.cache.ddusDe.get(id)||[]; const sn=INF.cache.alvoP.get(id);
+  const pv=v=>PRES.mask?'<span style="letter-spacing:2px;color:#999">••••••</span>':esc(v||'—'); const it=(l,v)=>`<div class="pr-it"><span>${l}</span><b>${v||'—'}</b></div>`;
+  const nav=[['pd-dados','Dados'],...(gL.length?[['pd-gov','Governança']]:[]),['pd-alvo','Alvo'],['pd-vinc','Vínculos'],['pd-teia','Teia'],['pd-mapa','Mapa'],...(dd.length?[['pd-dd','Denúncias']]:[]),...(regs.length||locs.length?[['pd-reg','Registros']]:[])];
+  const relTxt=v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; return sub?(v.a_id===id?`Superior de ${o.nome}`:`Subordinado a ${o.nome}`):v.tipo; };
+  return presNav(nav,true)+`<header class="pr-hero dos"><div class="pr-hero-in left">${presAvatar(p,1)}<div><div class="pr-kick">Dossiê do infrator</div><h1>${esc(p.alcunha?'“'+p.alcunha+'”':p.nome)}</h1><p class="nm">${esc(p.nome)}${p.nascimento?' · '+infIdade(p.nascimento)+' anos':''}</p>
+    <div class="pr-badges">${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''} ${nv?`<span class="pr-chip">Nível ${p.nivel} · ${esc(nv[1])}</span>`:''} ${p.cargo?`<span class="pr-chip">${esc(p.cargo)}</span>`:''} <span class="pr-chip">Risco ${p.risco||1}/5</span> ${a.posGeral?`<span class="pr-chip gold">🎯 #${a.posGeral} em alvos · ${a.total} pts</span>`:''}</div>
+    <div class="pr-kpis sm"><div><b>${adj.length}</b><span>Vínculos</span></div><div><b>${gL.length}</b><span>Funções na governança</span></div><div><b>${regs.length}</b><span>Registros</span></div><div><b>${locs.length}</b><span>Locais</span></div><div><b>${dd.length}</b><span>Denúncias</span></div></div></div></div></header>`
+   +presSecao('pd-dados','Perfil','Dados do infrator','',`<div class="pr-its">${it('Alcunha',esc(p.alcunha))}${it('Nascimento',p.nascimento?esc(infDataBR(p.nascimento)):'')}${it('CPF / RG',pv(p.documento))}${it('Mãe',pv(p.mae))}${it('Pai',pv(p.pai))}${it('Telefone',pv(p.telefone))}${it('Endereço',pv(p.endereco))}${it('Bairro',esc(p.bairro))}${it('Cidade',esc(p.cidade))}${it('Área',esc(p.area))}${it('Rede',esc(p.rede))}${it('Facção / função',esc([p.faccao,p.faccao_funcao].filter(Boolean).join(' — ')))}${it('Batalhão',esc(p.batalhao))}${it('Companhia',esc(p.companhia))}${it('Características',esc(p.fisico))}</div>
+     ${(p.crimes||[]).length?`<div style="margin-top:14px">${p.crimes.map(c=>`<span class="if-chip">${esc(c)}</span>`).join('')}</div>`:''}${(p.tags||[]).length?`<div style="margin-top:8px">${p.tags.map(c=>`<span class="pr-chip">#${esc(c)}</span>`).join(' ')}</div>`:''}${p.obs?`<p class="pr-obs">${esc(p.obs)}</p>`:''}`)
+   +(gL.length?presSecao('pd-gov','Organização','Governança criminal','',`<div class="pr-grid">${gL.map(g=>`<div class="pr-card static"><div class="pr-ci"><span class="if-b" style="background:#6b4c9a">${esc(g.papel)}</span><b>${esc(g.regiao||'(sem região)')}</b><small>${esc([g.companhia,g.batalhao,g.rede].filter(Boolean).join(' · '))}</small>${(g.bairros||[]).length?`<small>Bairros: ${esc(g.bairros.join(', '))}</small>`:''}${g.obs?`<small>${esc(g.obs)}</small>`:''}</div></div>`).join('')}</div>`,'dark'):'')
+   +presSecao('pd-alvo','Prioridade','Posição como alvo','',`<div class="pr-its"><div class="pr-it big"><span>Posição geral</span><b>#${a.posGeral||'—'} <small>de ${INF.pessoas.length}</small></b></div><div class="pr-it big"><span>Total</span><b>${a.total??'—'} pts</b></div><div class="pr-it big"><span>Quantitativo</span><b>${a.quant??'—'}${a.posQuant?` <small>#${a.posQuant}</small>`:''}</b></div><div class="pr-it big"><span>Qualitativo</span><b>${a.sel?a.qual:'—'}${a.sel&&a.posQual?` <small>#${a.posQual}</small>`:''}</b></div>${a.sel?`<div class="pr-it big"><span>Pontuação sensor</span><b>${a.sensor}/10</b></div>`:''}</div>${sn&&sn.obs?`<p class="pr-obs">${esc(sn.obs)}</p>`:''}${a.hits?`<div class="pr-box">${infAlvoDetalheHtml(a)}</div>`:''}`)
+   +presSecao('pd-vinc','Rede','Vínculos',adj.length?'Clique para abrir o dossiê do vinculado.':'',adj.length?`<div class="pr-grid">${adj.map(v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); return presCard(o,`<small class="rel" style="--c:${infCorVinculo(v.tipo)}">${esc(relTxt(v))} · força ${v.forca||2}/3</small>${v.obs?`<small class="ob">“${esc(v.obs)}”</small>`:''}`); }).join('')}</div>`:'<p style="color:#888">Nenhum vínculo cadastrado.</p>','')
+   +presSecao('pd-teia','Conexões','Teia do infrator',`<label class="pr-lbl">Alcance <select id="pd-prof">${[1,2,3].map(n=>`<option value="${n}" ${(INF_FICHA.prof||1)===n?'selected':''}>${n} grau${n>1?'s':''}</option>`).join('')}</select></label>`,`<div id="pd-teiabox"></div>`,'dark')
+   +presSecao('pd-mapa','Território','Mapa','Residência, locais de atuação, crimes e vinculados.',`<div id="pd-mapbox"></div>`)
+   +(dd.length?presSecao('pd-dd','Inteligência','Denúncias (DDU)','',dd.map((d,i)=>`<div class="pr-box"><b>${i+1}ª · ${esc(d.protocolo)}</b> <span>${esc(infDataHora(d.data_criacao)||'')}</span><div>${esc(d.natureza_desc||'')}${d.indexador_desc?' · '+esc(d.indexador_desc):''}</div>${d.relato?`<details><summary>Relato</summary><div style="white-space:pre-wrap">${esc(d.relato)}</div></details>`:''}</div>`).join(''),'dark'):'')
+   +((regs.length||locs.length)?presSecao('pd-reg','Histórico','Registros e locais de atuação','',`${locs.length?`<h4 class="pr-h4">Locais de atuação</h4><div class="pr-grid">${locs.map(l=>`<div class="pr-card static"><div class="pr-ci"><b>${esc(l.tipo||'Local')}</b><small>${esc([l.descricao,l.bairro].filter(Boolean).join(' · '))}</small>${l.obs?`<small>${esc(l.obs)}</small>`:''}</div></div>`).join('')}</div>`:''}${regs.length?`<h4 class="pr-h4">Crimes registrados</h4><div class="pr-tl">${regs.slice().sort((x,y)=>String(y.data||'').localeCompare(String(x.data||''))).map(r=>`<div><i></i><b>${esc(infDataBR(r.data)||'s/ data')}</b> — ${esc(r.crime)}${r.bairro?` · ${esc(r.bairro)}`:''}${r.referencia?` · REDS ${esc(r.referencia)}`:''}${r.descricao?`<small>${esc(r.descricao)}</small>`:''}</div>`).join('')}</div>`:''}`):'')
+   +`<footer class="pr-foot">4ª Cia PM Ind GER · Uso restrito</footer>`;
+}
+function presDossieBind(ov,id){
+  const draw=()=>{ if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } infTeia(ov.querySelector('#pd-teiabox'),{pid:id,prof:INF_FICHA.prof||1,re:draw}); };
+  const pf=ov.querySelector('#pd-prof'); if(pf) pf.onchange=e=>{ INF_FICHA.prof=+e.target.value; draw(); };
+  setTimeout(()=>{ if(PRES.view!==id) return; draw(); infMapa(ov.querySelector('#pd-mapbox'),{pid:id,prof:INF_FICHA.prof||1,re:()=>{}}); },50);
+}
+function presCss(){
+  if(document.getElementById('pres-css')) return; const s=document.createElement('style'); s.id='pres-css';
+  s.textContent=`
+  #inf-pres{position:fixed;inset:0;z-index:9500;overflow-y:auto;background:#f6f4ec;color:#1d1b16;font-family:'Inter','Segoe UI',system-ui,Arial,sans-serif;scroll-behavior:smooth}
+  #inf-pres *{box-sizing:border-box}
+  #inf-pres .pr-wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+  #inf-pres .pr-nav{position:sticky;top:0;z-index:20;background:rgba(18,17,14,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(224,184,74,.25)}
+  #inf-pres .pr-nav-in{max-width:1300px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  #inf-pres .pr-brand{color:#e0b84a;font-weight:700;letter-spacing:.02em}
+  #inf-pres .pr-links{display:flex;gap:4px;flex:1;flex-wrap:wrap}
+  #inf-pres .pr-links a{color:#d9d3bd;text-decoration:none;font-size:13px;font-weight:500;padding:6px 12px;border-radius:20px;transition:background .15s,color .15s}
+  #inf-pres .pr-links a:hover{background:rgba(224,184,74,.16);color:#fff}
+  #inf-pres .pr-act{display:flex;gap:8px}
+  #inf-pres .pr-btn{border:1px solid rgba(224,184,74,.5);background:rgba(224,184,74,.1);color:#e0b84a;padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;transition:transform .12s,background .15s}
+  #inf-pres .pr-btn:hover{transform:translateY(-1px);background:rgba(224,184,74,.22)}
+  #inf-pres .pr-btn.ghost{border-color:rgba(255,255,255,.2);color:#d9d3bd;background:transparent}
+  #inf-pres .pr-btn.gold{background:linear-gradient(180deg,#ecc65a,#d9ab34);color:#2a2000;border-color:transparent}
+  #inf-pres .pr-btn.big{padding:13px 26px;font-size:15px}
+  #inf-pres .pr-hero{position:relative;background:radial-gradient(900px 480px at 80% -10%,rgba(224,184,74,.22),transparent 60%),radial-gradient(700px 400px at 0% 100%,rgba(184,167,106,.15),transparent 60%),linear-gradient(160deg,#100f0d,#1d1a14 60%,#2b2517);color:#f0ede2;padding:80px 28px 90px;text-align:center}
+  #inf-pres .pr-hero.dos{padding:56px 28px 60px;text-align:left}
+  #inf-pres .pr-hero-in{max-width:1100px;margin:0 auto}
+  #inf-pres .pr-hero-in.left{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
+  #inf-pres .pr-logo{width:96px;margin-bottom:14px;filter:drop-shadow(0 8px 20px rgba(0,0,0,.5))}
+  #inf-pres .pr-kick{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#c9a63f;font-weight:700;margin-bottom:10px}
+  #inf-pres h1{font-size:clamp(34px,5.4vw,64px);line-height:1.04;margin:0 0 14px;font-weight:800;letter-spacing:-.03em}
+  #inf-pres .pr-hero p{font-size:18px;color:#cfc8ad;margin:0 auto 26px;max-width:680px}
+  #inf-pres .pr-hero p.nm{margin:0 0 14px;font-size:17px}
+  #inf-pres .pr-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:46px}
+  #inf-pres .pr-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;max-width:1000px;margin:0 auto}
+  #inf-pres .pr-kpis div{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px 14px;backdrop-filter:blur(4px)}
+  #inf-pres .pr-kpis b{display:block;font-size:34px;font-weight:800;color:#e0b84a;letter-spacing:-.02em}
+  #inf-pres .pr-kpis span{font-size:12px;color:#cfc8ad}
+  #inf-pres .pr-kpis.sm{margin:18px 0 0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+  #inf-pres .pr-kpis.sm b{font-size:24px}
+  #inf-pres .pr-sig{position:absolute;left:0;right:0;bottom:14px;font-size:11.5px;color:#a89f82}
+  #inf-pres .pr-sec{padding:72px 0;background:#f6f4ec}
+  #inf-pres .pr-sec.dark{background:linear-gradient(180deg,#171612,#211e16);color:#f0ede2}
+  #inf-pres .pr-sec h2{font-size:clamp(26px,3.4vw,40px);margin:0 0 8px;font-weight:800;letter-spacing:-.025em}
+  #inf-pres .pr-sec .pr-kick{color:#a8861f}
+  #inf-pres .pr-sec.dark .pr-kick{color:#e0b84a}
+  #inf-pres .pr-sub{color:#6f6a58;font-size:15px;margin:0 0 26px}
+  #inf-pres .pr-sec.dark .pr-sub,#inf-pres .pr-sec.dark .pr-lbl{color:#bfb89c}
+  #inf-pres .pr-lbl{font-size:13px;color:#6f6a58}
+  #inf-pres .pr-fil{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 20px}
+  #inf-pres .pr-fil select,#inf-pres .pr-fil input{width:auto;min-width:170px;border-radius:22px;padding:9px 16px}
+  #inf-pres .pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+  #inf-pres .pr-card{display:flex;gap:12px;align-items:center;background:#fff;color:#1d1b16;border:1px solid #e6e2d3;border-radius:16px;padding:14px;cursor:pointer;position:relative;box-shadow:0 1px 2px rgba(24,22,14,.05);transition:transform .15s,box-shadow .15s,border-color .15s}
+  #inf-pres .pr-card:hover{transform:translateY(-3px);box-shadow:0 16px 30px -14px rgba(24,22,14,.35);border-color:#d6b34a}
+  #inf-pres .pr-card.static{cursor:default}#inf-pres .pr-card.static:hover{transform:none;box-shadow:0 1px 2px rgba(24,22,14,.05);border-color:#e6e2d3}
+  #inf-pres .pr-ci{display:flex;flex-direction:column;gap:3px;min-width:0}
+  #inf-pres .pr-ci small{color:#6f6a58;font-size:12px;overflow:hidden;text-overflow:ellipsis}
+  #inf-pres .pr-ci small.rel{border-left:3px solid var(--c);padding-left:6px;font-weight:600}
+  #inf-pres .pr-ci small.ob{font-style:italic}
+  #inf-pres .pr-pos{position:absolute;top:10px;right:12px;font-weight:800;color:#a8861f;font-size:13px}
+  #inf-pres .pr-av{flex:none;width:46px;height:46px;border-radius:50%;background:var(--c);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;box-shadow:0 4px 12px -4px rgba(0,0,0,.4);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+  #inf-pres .pr-av.g{width:110px;height:110px;font-size:40px;border:4px solid rgba(224,184,74,.6)}
+  #inf-pres .pr-ranking{display:flex;flex-direction:column;gap:10px}
+  #inf-pres .pr-rk{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:12px 16px;cursor:pointer;transition:background .15s,transform .15s}
+  #inf-pres .pr-rk:hover{background:rgba(224,184,74,.12);transform:translateX(4px)}
+  #inf-pres .pr-rk .n{font-size:26px;font-weight:800;color:#e0b84a;width:40px;text-align:center}
+  #inf-pres .pr-rk .who{flex:0 0 280px;min-width:0;display:flex;flex-direction:column}#inf-pres .pr-rk .who small{color:#a89f82;font-size:12px}
+  #inf-pres .pr-rk .bar{flex:1;height:12px;border-radius:8px;background:rgba(255,255,255,.1);overflow:hidden}#inf-pres .pr-rk .bar i{display:block;height:100%;background:linear-gradient(90deg,#b8861f,#ecc65a);border-radius:8px}
+  #inf-pres .pr-rk .pt{font-weight:800;font-size:20px;min-width:64px;text-align:right}#inf-pres .pr-rk .sn{font-size:12px;color:#e0b84a}
+  #inf-pres .pr-its{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  #inf-pres .pr-it{background:#fff;border:1px solid #e6e2d3;border-radius:14px;padding:12px 16px;color:#1d1b16}
+  #inf-pres .pr-it span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a8368;margin-bottom:2px}#inf-pres .pr-it b{font-size:15px;font-weight:600;word-break:break-word}
+  #inf-pres .pr-it.big b{font-size:30px;font-weight:800;color:#a8861f}#inf-pres .pr-it.big small{font-size:14px;color:#6f6a58}
+  #inf-pres .pr-chip{display:inline-block;border:1px solid rgba(224,184,74,.5);color:#e0b84a;border-radius:20px;padding:2px 12px;font-size:12px;font-weight:600}
+  #inf-pres .pr-chip.gold{background:#e0b84a;color:#2a2000}
+  #inf-pres .pr-sec:not(.dark) .pr-chip{color:#6b5d1f;border-color:#d6c88f}
+  #inf-pres .pr-badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  #inf-pres .pr-obs{background:#fff;border-left:4px solid #d6b34a;border-radius:10px;padding:12px 16px;margin:14px 0 0;color:#1d1b16;white-space:pre-wrap}
+  #inf-pres .pr-box{background:#fff;color:#1d1b16;border:1px solid #e6e2d3;border-radius:14px;padding:14px 16px;margin-top:14px}
+  #inf-pres .pr-box details{margin-top:6px;font-size:13px}
+  #inf-pres .pr-h4{margin:22px 0 10px;font-size:15px}
+  #inf-pres .pr-tl{border-left:2px solid #d6b34a;margin-left:6px;padding-left:18px;display:flex;flex-direction:column;gap:10px}
+  #inf-pres .pr-tl div{position:relative;background:#fff;border:1px solid #e6e2d3;border-radius:12px;padding:10px 14px}
+  #inf-pres .pr-tl i{position:absolute;left:-26px;top:16px;width:12px;height:12px;border-radius:50%;background:#d6b34a;border:2px solid #f6f4ec}
+  #inf-pres .pr-tl small{display:block;color:#6f6a58}
+  #inf-pres .pr-foot{padding:28px;text-align:center;background:#100f0d;color:#8a8368;font-size:12px}
+  #inf-pres #if-mapa,#inf-pres #if-teia{height:520px;border-radius:18px;box-shadow:0 18px 40px -20px rgba(0,0,0,.5)}
+  #inf-pres .if-mapwrap .if-box,#inf-pres .pr-sec.dark .if-box{background:rgba(255,255,255,.97);color:#1d1b16}
+  #inf-pres .gv-wrap{overflow:auto}
+  @media(max-width:800px){#inf-pres .pr-rk .who{flex-basis:140px}#inf-pres .pr-wrap{padding:0 16px}}
+  @media print{#inf-pres .pr-nav{display:none}#inf-pres{position:static;overflow:visible}}`;
+  document.head.appendChild(s);
 }
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
