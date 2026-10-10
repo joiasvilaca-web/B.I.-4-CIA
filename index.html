@@ -4187,7 +4187,7 @@ function infInjetarCss(){
 // ---------- casca: KPIs, abas, filtros ----------
 function infRender(){
   const box=document.getElementById('area-corpo'); if(!box) return;
-  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   const P=INF.pessoas; const F=INF.F;
   const kp=[['Cadastrados',P.length],['Faccionados',P.filter(p=>p.faccao).length],['Foragidos',P.filter(p=>p.status==='foragido').length],['Presos',P.filter(p=>p.status==='preso').length],
     ['Vínculos',INF.vinculos.length],['Registros de crimes',INF.registros.length],['Com endereço no mapa',P.filter(p=>p.lat&&p.lng).length]];
@@ -4237,7 +4237,7 @@ function infLigarFiltros(){
 }
 function infCorpo(){
   const c=document.getElementById('inf-corpo'); if(!c) return;
-  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   Object.values(INF.charts).forEach(x=>{ try{x.destroy();}catch(e){} }); INF.charts={};
   ({cadastro:infCadastro,gov:infGovTab,alvo:infAlvoTab,config:infConfig})[INF.sub](c);
 }
@@ -4277,12 +4277,12 @@ function infCsv(){
 let INF_FICHA = {id:null, aba:'dados', sel:{crimes:[]}};
 function infFicha(id, aba){
   INF_FICHA.id=id; INF_FICHA.aba=aba||'dados';
-  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   let ov=document.getElementById('inf-ficha'); if(!ov){ ov=document.createElement('div'); ov.id='inf-ficha'; ov.className='if-ov'; document.body.appendChild(ov); }
   const p = id ? INF.cache.byId.get(id) : null;
   if(id && !p){ ov.remove(); return; }
   INF_FICHA.sel.crimes = p ? (p.crimes||[]).slice() : [];
-  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa']];
+  const ed=INF.podeEditar; const tabs=[['dados','Dados'],['vinc','🕸️ Vínculos / Teia'+(p?` (${(INF.cache.adj.get(p.id)||[]).length})`:'')],['loc','Locais de atuação'+(p?` (${(INF.cache.locs.get(p.id)||[]).length})`:'')],['reg','Registros de crimes'+(p?` (${(INF.cache.regs.get(p.id)||[]).length})`:'')],['ddu','DDU / Denúncias'+(p?` (${(INF.cache.ddusDe.get(p.id)||[]).length})`:'')],['gov','Governança criminal'+(p?` (${(INF.cache.govP.get(p.id)||[]).length})`:'')],['alvo','🎯 Alvo prioritário'],['mapa','🗺️ Mapa'],['neural','🧠 Mapa neural']];
   ov.innerHTML=`<div class="if-ovbox"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
      <h3 style="margin:0">${p?esc(infNomeExib(p)):'Novo infrator'} ${p?infBadge(p.status):''}</h3>
      <div style="display:flex;gap:6px;flex-wrap:wrap">${p?`<button class="btn secundario if-sm" id="iff-teia">🕸️ Ver rede</button><button class="btn secundario if-sm" id="iff-mapa">🗺️ Ver no mapa</button><button class="btn dourado if-sm" id="iff-apres">🎬 Apresentar</button><button class="btn secundario if-sm" id="iff-print">🖨️ Ficha</button>`:''}${p&&ed?'<button class="btn perigo if-sm" id="iff-del">Excluir</button>':''}<button class="btn secundario if-sm" id="iff-x">✖ Fechar</button></div></div>
@@ -4297,7 +4297,7 @@ function infFicha(id, aba){
     document.getElementById('iff-apres').onclick=()=>{ infFecharFicha(); infApresentar(p.id); };
     const d=document.getElementById('iff-del'); if(d) d.onclick=async()=>{ if(!confirm(`Excluir ${p.nome} e todos os vínculos, locais e registros dele? Isso não pode ser desfeito.`)) return; try{ await apiInf('infExcluir',{entidade:'pessoa',id:p.id}); infFecharFicha(); await infCarregar(); infRender(); infToast('Excluído.'); }catch(e){ infToast(e.message,true); } };
   }
-  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
+  ({dados:infFichaDados,vinc:infFichaVinc,loc:infFichaLoc,reg:infFichaReg,ddu:infFichaDdu,gov:infFichaGov,alvo:infFichaAlvo,mapa:infFichaMapa,neural:infFichaNeural})[INF_FICHA.aba](document.getElementById('iff-corpo'), p);
 }
 let INF_CRIAR_CB=null; let INF_VPEND=null;
 function infFecharFicha(){ const o=document.getElementById('inf-ficha'); if(o) o.remove(); INF_CRIAR_CB=null; }
@@ -5078,12 +5078,12 @@ function infApresentar(pid){
   const k=e=>{ if(e.key==='Escape'){ if(document.getElementById('inf-ficha')) return; presFechar(); } }; document.addEventListener('keydown',k); ov._k=k;
   presRender();
 }
-function presFechar(){ const ov=document.getElementById('inf-pres'); if(ov){ document.removeEventListener('keydown',ov._k); ov.remove(); } PRES.on=false; document.body.style.overflow=''; if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; } }
+function presFechar(){ const ov=document.getElementById('inf-pres'); if(ov){ document.removeEventListener('keydown',ov._k); ov.remove(); } PRES.on=false; document.body.style.overflow=''; if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; } }
 function presIr(id){ if(PRES.view!==id) PRES.pila.push(PRES.view); PRES.view=id; presRender(true); }
 function presVoltar(){ PRES.view=PRES.pila.length?PRES.pila.pop():'home'; presRender(true); }
 function presRender(topo){
   const ov=document.getElementById('inf-pres'); if(!ov) return;
-  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
+  if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } if(INF.mapa){ try{INF.mapa.remove();}catch(e){} INF.mapa=null; }
   const sc=ov.scrollTop; ov.innerHTML=PRES.view==='home'?presHomeHtml():presDossieHtml(PRES.view);
   ov.scrollTop=topo?0:sc;
   ov.querySelectorAll('[data-go]').forEach(a=>a.onclick=e=>{ e.preventDefault(); const t=ov.querySelector('#'+a.dataset.go); if(t) ov.scrollTo({top:t.offsetTop-56,behavior:'smooth'}); });
@@ -5106,7 +5106,7 @@ function presHomeHtml(){
   const P=INF.pessoas, govIds=new Set(INF.gov.map(g=>g.pessoa_id)); const redes=new Set(INF.gov.map(g=>g.rede||(INF.cache.byId.get(g.pessoa_id)||{}).rede||'').filter(Boolean));
   const logo=(document.querySelector('#sidebar .cab img')||{}).src||'';
   const kp=[[P.length,'Cadastrados'],[govIds.size,'Na governança criminal'],[P.filter(p=>p.status==='foragido').length,'Foragidos'],[P.filter(p=>p.status==='preso').length,'Presos'],[INF.vinculos.length,'Vínculos mapeados'],[INF.registros.length,'Registros de crimes']];
-  const nav=[['pr-gov','Governança'],['pr-alvo','Alvos prioritários'],['pr-mapa','Mapa'],['pr-teia','Teia de vínculos'],['pr-lista','Infratores']];
+  const nav=[['pr-gov','Governança'],['pr-alvo','Alvos prioritários'],['pr-mapa','Mapa'],['pr-teia','Teia de vínculos'],['pr-neural','Mapa neural'],['pr-lista','Infratores']];
   return presNav(nav,false)+`<header class="pr-hero" id="pr-top"><div class="pr-hero-in">${logo?`<img src="${logo}" class="pr-logo" alt="">`:''}<div class="pr-kick">Análise de inteligência · Juiz de Fora / MG</div><h1>Infratores &amp; Governança Criminal</h1><p>4ª Cia PM Ind GER — panorama das lideranças, vínculos e alvos prioritários.</p>
     <div class="pr-ctas"><a href="#" data-go="pr-gov" class="pr-btn gold big">Ver governança</a><a href="#" data-go="pr-alvo" class="pr-btn ghost big">Alvos prioritários</a></div>
     <div class="pr-kpis">${kp.map(([n,l])=>`<div><b>${n}</b><span>${l}</span></div>`).join('')}</div></div><div class="pr-sig">🔒 Informação sigilosa — uso restrito à atividade de inteligência/segurança pública.</div></header>`
@@ -5114,7 +5114,8 @@ function presHomeHtml(){
    +presSecao('pr-alvo','02 · Prioridade','Alvos prioritários','Ranking pela pontuação quantitativa (cadastro) somada à qualitativa (análise + sensor).',`<div class="pr-fil"><select id="pr-am"><option value="geral" ${PRES.alvoModo==='geral'?'selected':''}>Geral</option><option value="quant" ${PRES.alvoModo==='quant'?'selected':''}>Quantitativo</option><option value="qual" ${PRES.alvoModo==='qual'?'selected':''}>Qualitativo (selecionados)</option></select><select id="pr-an">${[5,10,20,50].map(n=>`<option value="${n}" ${PRES.alvoN===n?'selected':''}>Top ${n}</option>`).join('')}</select></div><div id="pr-alvos" class="pr-ranking"></div>`,'dark')
    +presSecao('pr-mapa','03 · Território','Mapa','Residências, locais de atuação e crimes. Marcadores abrem o dossiê.',`<div id="pr-mapbox"></div>`)
    +presSecao('pr-teia','04 · Conexões','Teia de vínculos','Toque numa pessoa para ver o resumo; duplo clique abre o dossiê.',`<div id="pr-teiabox"></div>`,'dark')
-   +presSecao('pr-lista','05 · Cadastro','Infratores','Busque e abra o dossiê individual.',`<div class="pr-fil"><input id="pr-b" placeholder="Buscar nome, vulgo, bairro…" value="${esc(PRES.busca)}"><select id="pr-s"><option value="">Todas as situações</option>${Object.entries(INF_STATUS).map(([k,v])=>`<option value="${k}" ${PRES.status===k?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="pr-r"><option value="">Todas as redes</option>${infRedes().map(r=>`<option ${PRES.rede===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div><div id="pr-grid" class="pr-grid"></div><div style="text-align:center;margin-top:16px" id="pr-mais"></div>`)
+   +presSecao('pr-neural','05 · Mapa neural','Mapa neural de vinculação','Infratores, locais, crimes, denúncias e territórios no mesmo grafo. Clique num nó para expandir as conexões.',`<div id="pr-neubox"></div>`)
+   +presSecao('pr-lista','06 · Cadastro','Infratores','Busque e abra o dossiê individual.',`<div class="pr-fil"><input id="pr-b" placeholder="Buscar nome, vulgo, bairro…" value="${esc(PRES.busca)}"><select id="pr-s"><option value="">Todas as situações</option>${Object.entries(INF_STATUS).map(([k,v])=>`<option value="${k}" ${PRES.status===k?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="pr-r"><option value="">Todas as redes</option>${infRedes().map(r=>`<option ${PRES.rede===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div><div id="pr-grid" class="pr-grid"></div><div style="text-align:center;margin-top:16px" id="pr-mais"></div>`)
    +`<footer class="pr-foot">4ª Cia PM Ind GER · Uso restrito · Gerado em ${new Date().toLocaleDateString('pt-BR')}</footer>`;
 }
 function presHomeBind(ov){
@@ -5130,13 +5131,13 @@ function presHomeBind(ov){
     ov.querySelector('#pr-grid').innerHTML=L.slice(0,PRES.gridN).map(p=>presCard(p,`<small>${esc(p.bairro||'')}</small>`)).join('')||'<p style="color:#888">Ninguém encontrado.</p>';
     ov.querySelectorAll('#pr-grid [data-pp]').forEach(a=>a.onclick=()=>presIr(+a.dataset.pp)); ov.querySelector('#pr-mais').innerHTML=L.length>PRES.gridN?`<button class="pr-btn gold" id="pr-more">Mostrar mais (${L.length-PRES.gridN})</button>`:''; const mb=ov.querySelector('#pr-more'); if(mb) mb.onclick=()=>{ PRES.gridN+=24; grid(); }; };
   let tb; ov.querySelector('#pr-b').oninput=e=>{ PRES.busca=e.target.value; clearTimeout(tb); tb=setTimeout(()=>{ PRES.gridN=24; grid(); },200); }; ov.querySelector('#pr-s').onchange=e=>{ PRES.status=e.target.value; grid(); }; ov.querySelector('#pr-r').onchange=e=>{ PRES.rede=e.target.value; grid(); }; grid();
-  setTimeout(()=>{ if(PRES.view!=='home') return; infMapa(ov.querySelector('#pr-mapbox'),{todos:true,re:()=>{}}); infTeia(ov.querySelector('#pr-teiabox'),{todos:true,re:()=>presRender()}); },50);
+  setTimeout(()=>{ if(PRES.view!=='home') return; infMapa(ov.querySelector('#pr-mapbox'),{todos:true,re:()=>{}}); infTeia(ov.querySelector('#pr-teiabox'),{todos:true,re:()=>presRender()}); const top=INF.pessoas.slice().sort((a,b)=>((infAlvo().get(a.id)||{}).posGeral||1e9)-((infAlvo().get(b.id)||{}).posGeral||1e9)).slice(0,6).map(p=>p.id); infNeural(ov.querySelector('#pr-neubox'),{seed:top,expand:top.slice(0,2)}); },50);
 }
 function presDossieHtml(id){
   const p=INF.cache.byId.get(id); if(!p){ PRES.view='home'; return presHomeHtml(); }
   const a=infAlvo().get(id)||{}; const nv=INF.cat.niveis.find(n=>n[0]===p.nivel); const gL=INF.cache.govP.get(id)||[]; const adj=INF.cache.adj.get(id)||[]; const regs=INF.cache.regs.get(id)||[]; const locs=INF.cache.locs.get(id)||[]; const dd=INF.cache.ddusDe.get(id)||[]; const sn=INF.cache.alvoP.get(id);
   const pv=v=>PRES.mask?'<span style="letter-spacing:2px;color:#999">••••••</span>':esc(v||'—'); const it=(l,v)=>`<div class="pr-it"><span>${l}</span><b>${v||'—'}</b></div>`;
-  const nav=[['pd-dados','Dados'],...(gL.length?[['pd-gov','Governança']]:[]),['pd-alvo','Alvo'],['pd-vinc','Vínculos'],['pd-teia','Teia'],['pd-mapa','Mapa'],...(dd.length?[['pd-dd','Denúncias']]:[]),...(regs.length||locs.length?[['pd-reg','Registros']]:[])];
+  const nav=[['pd-dados','Dados'],...(gL.length?[['pd-gov','Governança']]:[]),['pd-alvo','Alvo'],['pd-vinc','Vínculos'],['pd-teia','Teia'],['pd-neural','Neural'],['pd-mapa','Mapa'],...(dd.length?[['pd-dd','Denúncias']]:[]),...(regs.length||locs.length?[['pd-reg','Registros']]:[])];
   const relTxt=v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); const sub=infEhSub(v.tipo)&&v.a_superior; return sub?(v.a_id===id?`Superior de ${o.nome}`:`Subordinado a ${o.nome}`):v.tipo; };
   return presNav(nav,true)+`<header class="pr-hero dos"><div class="pr-hero-in left">${presAvatar(p,1)}<div><div class="pr-kick">Dossiê do infrator</div><h1>${esc(p.alcunha?'“'+p.alcunha+'”':p.nome)}</h1><p class="nm">${esc(p.nome)}${p.nascimento?' · '+infIdade(p.nascimento)+' anos':''}</p>
     <div class="pr-badges">${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''} ${nv?`<span class="pr-chip">Nível ${p.nivel} · ${esc(nv[1])}</span>`:''} ${p.cargo?`<span class="pr-chip">${esc(p.cargo)}</span>`:''} <span class="pr-chip">Risco ${p.risco||1}/5</span> ${a.posGeral?`<span class="pr-chip gold">🎯 #${a.posGeral} em alvos · ${a.total} pts</span>`:''}</div>
@@ -5147,15 +5148,16 @@ function presDossieHtml(id){
    +presSecao('pd-alvo','Prioridade','Posição como alvo','',`<div class="pr-its"><div class="pr-it big"><span>Posição geral</span><b>#${a.posGeral||'—'} <small>de ${INF.pessoas.length}</small></b></div><div class="pr-it big"><span>Total</span><b>${a.total??'—'} pts</b></div><div class="pr-it big"><span>Quantitativo</span><b>${a.quant??'—'}${a.posQuant?` <small>#${a.posQuant}</small>`:''}</b></div><div class="pr-it big"><span>Qualitativo</span><b>${a.sel?a.qual:'—'}${a.sel&&a.posQual?` <small>#${a.posQual}</small>`:''}</b></div>${a.sel?`<div class="pr-it big"><span>Pontuação sensor</span><b>${a.sensor}/10</b></div>`:''}</div>${sn&&sn.obs?`<p class="pr-obs">${esc(sn.obs)}</p>`:''}${a.hits?`<div class="pr-box">${infAlvoDetalheHtml(a)}</div>`:''}`)
    +presSecao('pd-vinc','Rede','Vínculos',adj.length?'Clique para abrir o dossiê do vinculado.':'',adj.length?`<div class="pr-grid">${adj.map(v=>{ const o=INF.cache.byId.get(v.a_id===id?v.b_id:v.a_id); return presCard(o,`<small class="rel" style="--c:${infCorVinculo(v.tipo)}">${esc(relTxt(v))} · força ${v.forca||2}/3</small>${v.obs?`<small class="ob">“${esc(v.obs)}”</small>`:''}`); }).join('')}</div>`:'<p style="color:#888">Nenhum vínculo cadastrado.</p>','')
    +presSecao('pd-teia','Conexões','Teia do infrator',`<label class="pr-lbl">Alcance <select id="pd-prof">${[1,2,3].map(n=>`<option value="${n}" ${(INF_FICHA.prof||1)===n?'selected':''}>${n} grau${n>1?'s':''}</option>`).join('')}</select></label>`,`<div id="pd-teiabox"></div>`,'dark')
+   +presSecao('pd-neural','Mapa neural','Mapa neural do infrator','Locais, crimes, denúncias, governança e vinculados. Clique nos nós para expandir.',`<div id="pd-neubox"></div>`,'dark')
    +presSecao('pd-mapa','Território','Mapa','Residência, locais de atuação, crimes e vinculados.',`<div id="pd-mapbox"></div>`)
    +(dd.length?presSecao('pd-dd','Inteligência','Denúncias (DDU)','',dd.map((d,i)=>`<div class="pr-box"><b>${i+1}ª · ${esc(d.protocolo)}</b> <span>${esc(infDataHora(d.data_criacao)||'')}</span><div>${esc(d.natureza_desc||'')}${d.indexador_desc?' · '+esc(d.indexador_desc):''}</div>${d.relato?`<details><summary>Relato</summary><div style="white-space:pre-wrap">${esc(d.relato)}</div></details>`:''}</div>`).join(''),'dark'):'')
    +((regs.length||locs.length)?presSecao('pd-reg','Histórico','Registros e locais de atuação','',`${locs.length?`<h4 class="pr-h4">Locais de atuação</h4><div class="pr-grid">${locs.map(l=>`<div class="pr-card static"><div class="pr-ci"><b>${esc(l.tipo||'Local')}</b><small>${esc([l.descricao,l.bairro].filter(Boolean).join(' · '))}</small>${l.obs?`<small>${esc(l.obs)}</small>`:''}</div></div>`).join('')}</div>`:''}${regs.length?`<h4 class="pr-h4">Crimes registrados</h4><div class="pr-tl">${regs.slice().sort((x,y)=>String(y.data||'').localeCompare(String(x.data||''))).map(r=>`<div><i></i><b>${esc(infDataBR(r.data)||'s/ data')}</b> — ${esc(r.crime)}${r.bairro?` · ${esc(r.bairro)}`:''}${r.referencia?` · REDS ${esc(r.referencia)}`:''}${r.descricao?`<small>${esc(r.descricao)}</small>`:''}</div>`).join('')}</div>`:''}`):'')
    +`<footer class="pr-foot">4ª Cia PM Ind GER · Uso restrito</footer>`;
 }
 function presDossieBind(ov,id){
-  const draw=()=>{ if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } infTeia(ov.querySelector('#pd-teiabox'),{pid:id,prof:INF_FICHA.prof||1,re:draw}); };
+  const draw=()=>{ if(INF.net){ try{INF.net.destroy();}catch(e){} INF.net=null; } if(INF.neural){ try{INF.neural.destroy();}catch(e){} INF.neural=null; } infTeia(ov.querySelector('#pd-teiabox'),{pid:id,prof:INF_FICHA.prof||1,re:draw}); };
   const pf=ov.querySelector('#pd-prof'); if(pf) pf.onchange=e=>{ INF_FICHA.prof=+e.target.value; draw(); };
-  setTimeout(()=>{ if(PRES.view!==id) return; draw(); infMapa(ov.querySelector('#pd-mapbox'),{pid:id,prof:INF_FICHA.prof||1,re:()=>{}}); },50);
+  setTimeout(()=>{ if(PRES.view!==id) return; draw(); infMapa(ov.querySelector('#pd-mapbox'),{pid:id,prof:INF_FICHA.prof||1,re:()=>{}}); infNeural(ov.querySelector('#pd-neubox'),{seed:[id],expand:[id]}); },50);
 }
 function presCss(){
   if(document.getElementById('pres-css')) return; const s=document.createElement('style'); s.id='pres-css';
@@ -5240,10 +5242,82 @@ function presCss(){
   #inf-pres #if-mapa,#inf-pres #if-teia{height:520px;border-radius:18px;box-shadow:0 18px 40px -20px rgba(0,0,0,.5)}
   #inf-pres .if-mapwrap .if-box,#inf-pres .pr-sec.dark .if-box{background:rgba(255,255,255,.97);color:#1d1b16}
   #inf-pres .gv-wrap{overflow:auto}
+  .nm-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px}.nm-t{font-weight:600;color:#6f6a58}.nm-ck{display:inline-flex;gap:4px;align-items:center;cursor:pointer;margin:0;font-weight:500}.nm-ck input{width:auto}
+  .nm-wrap{display:grid;grid-template-columns:1fr 290px;gap:12px}#nm-canvas{height:600px;border-radius:18px;border:1px solid #ccc4a8;background:radial-gradient(circle at 30% 20%,#fff,#f3efe0);box-shadow:0 18px 40px -22px rgba(0,0,0,.5)}
+  #nm-side{background:#fff;color:#1d1b16;border:1px solid #e6e2d3;border-radius:16px;padding:14px;font-size:13px;max-height:600px;overflow:auto}.nm-tp{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#a8861f;font-weight:700;margin-bottom:4px}
+  .nm-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:#6f6a58;margin-top:8px;align-items:center}.nm-leg i{display:inline-block;width:11px;height:11px;margin-right:4px;vertical-align:-1px}.nm-leg i.d{border-radius:50%}.nm-leg i.t{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid #d9622b}.nm-leg i.h{border-radius:3px}
+  #inf-pres .pr-sec.dark .nm-bar .nm-t,#inf-pres .pr-sec.dark .nm-leg{color:#bfb89c}#inf-pres .pr-sec.dark .nm-bar input:not([type=checkbox]){background:#fff}
+  @media(max-width:900px){.nm-wrap{grid-template-columns:1fr}}
   @media(max-width:800px){#inf-pres .pr-rk .who{flex-basis:140px}#inf-pres .pr-wrap{padding:0 16px}}
   @media print{#inf-pres .pr-nav{display:none}#inf-pres{position:static;overflow:visible}}`;
   document.head.appendChild(s);
 }
+
+// ================= MAPA NEURAL (grafo expansivel: pessoas, locais, crimes, denuncias, governanca) =================
+const NM_TIPOS={p:'Infrator',l:'Local de atuação',c:'Tipo de crime',d:'Denúncia (DDU)',g:'Território / governança'};
+async function infNeural(c,op){
+  presCss(); op=op||{}; const abrir=op.abrir||(id=>infAbrir(id));
+  c.innerHTML=`<div class="nm-bar"><span class="nm-t">Mostrar ao expandir:</span>${[['loc','▪ Locais'],['crime','▲ Crimes'],['ddu','★ Denúncias'],['gov','⬢ Governança']].map(([k,l])=>`<label class="nm-ck"><input type="checkbox" data-nt="${k}" checked> ${l}</label>`).join('')}
+    <span style="flex:1"></span><input id="nm-add" list="nm-dl" placeholder="＋ adicionar infrator ao mapa…" style="width:230px"><datalist id="nm-dl">${INF.pessoas.map(p=>`<option value="${esc(infNomeExib(p))} #${p.id}">`).join('')}</datalist>
+    <button class="btn secundario if-sm" id="nm-all">⇢ Expandir visíveis</button><button class="btn secundario if-sm" id="nm-rst">↺ Reiniciar</button><button class="btn secundario if-sm" id="nm-fit">⤢ Ajustar</button><button class="btn secundario if-sm" id="nm-png">🖼️ PNG</button></div>
+    <div class="nm-wrap"><div id="nm-canvas"></div><aside id="nm-side"><div style="color:#888">Clique em qualquer nó para expandir as conexões e ver os detalhes. Duplo clique num infrator abre o dossiê.</div></aside></div>
+    <div class="nm-leg"><span><i class="d" style="background:#a4202a"></i>Infrator (cor = facção/rede)</span><span><i class="s" style="background:#b9ad84"></i>Local</span><span><i class="t" style="border-bottom-color:#d9622b"></i>Crime</span><span><i class="d" style="background:#c0392b;border-radius:2px;transform:rotate(45deg)"></i>Denúncia</span><span><i class="h" style="background:#6b4c9a"></i>Território</span><span id="nm-cnt" style="margin-left:auto"></span></div>`;
+  if(!(await infLib('vis'))){ c.innerHTML=INF_AVISO_LIB('rede'); return; }
+  const N=new vis.DataSet(), E=new vis.DataSet(), exp=new Set(); const T={loc:true,crime:true,ddu:true,gov:true}; const CAP=28;
+  const S=()=>infAlvo(); const byId=INF.cache.byId;
+  const cnt=()=>{ const el=document.getElementById('nm-cnt'); if(el) el.textContent=`${N.length} nós · ${E.length} ligações`; };
+  const gk=g=>'g:'+[g.regiao||'',g.rede||'',g.batalhao||''].join('|');
+  const def=key=>{ const [t,...r]=key.split(':'); const v=r.join(':');
+    if(t==='p'){ const p=byId.get(+v); if(!p) return null; const a=S().get(p.id)||{total:0}; const cor=infCorFaccao(p.faccao||p.rede); const st=p.status;
+      return {id:key,label:infCurto(p),title:`${infNomeExib(p)}\n${p.rede||p.faccao||'sem rede'} · ${INF_STATUS[st]||''}`,shape:(p.nivel&&p.nivel<=2)?'diamond':(st==='preso'?'square':'dot'),size:14+Math.min(1,(a.total||0)/100)*20,color:{background:cor,border:st==='foragido'?'#a4202a':st==='preso'?'#555':'#fff',highlight:{background:cor,border:'#000'}},borderWidth:st==='solto'||st==='monitorado'?2:4,font:{size:12,color:'#222',strokeWidth:3,strokeColor:'#fff'}}; }
+    if(t==='l'){ const l=INF.locais.find(x=>x.id===+v); if(!l) return null; return {id:key,label:(l.tipo||'Local')+(l.bairro?'\n'+l.bairro:''),shape:'square',size:13,color:{background:'#d8cfa6',border:'#8f7f45'},font:{size:11,color:'#444',strokeWidth:3,strokeColor:'#fff'}}; }
+    if(t==='c'){ return {id:key,label:v,shape:'triangle',size:15,color:{background:'#e8845a',border:'#a8451b'},font:{size:11,color:'#7a2e0e',strokeWidth:3,strokeColor:'#fff'}}; }
+    if(t==='d'){ const d=INF.cache.dduById.get(+v); if(!d) return null; return {id:key,label:'DDU '+String(d.protocolo).slice(-6),title:d.natureza_desc||'',shape:'star',size:15,color:{background:'#d33a2c',border:'#7d1010'},font:{size:11,color:'#7d1010',strokeWidth:3,strokeColor:'#fff'}}; }
+    if(t==='g'){ const [rg,rd,bt]=v.split('|'); return {id:key,label:(rg||rd||'Governança')+(bt?'\n'+bt:''),shape:'hexagon',size:17,color:{background:'#8a63b5',border:'#4b2f78'},font:{size:11,color:'#3b2460',strokeWidth:3,strokeColor:'#fff'}}; }
+    return null; };
+  const addN=key=>{ if(N.get(key)) return true; const d=def(key); if(!d) return false; N.add(d); return true; };
+  const addE=(a,b,o)=>{ const id=a+'>'+b; if(E.get(id)||E.get(b+'>'+a)) return; E.add({id,from:a,to:b,smooth:{type:'continuous'},color:{color:'#999',opacity:.8},width:1.5,...o}); };
+  const vizinhos=key=>{ const [t,...r]=key.split(':'); const v=r.join(':'); const out=[]; // [chaveNo, opcoesAresta]
+    if(t==='p'){ const id=+v;
+      (INF.cache.adj.get(id)||[]).forEach(x=>{ const o=x.a_id===id?x.b_id:x.a_id; const sub=infEhSub(x.tipo)&&x.a_superior; out.push(['p:'+o,{from:sub?'p:'+x.a_id:key,to:sub?'p:'+x.b_id:'p:'+o,arrows:sub?'to':'',dashes:!infEhSub(x.tipo),color:{color:infCorVinculo(x.tipo)},width:1+(x.forca||2),title:x.tipo+(x.obs?': '+x.obs:'')}]); });
+      if(T.loc) (INF.cache.locs.get(id)||[]).forEach(l=>out.push(['l:'+l.id,{dashes:[3,4],color:{color:'#b9ad84'}}]));
+      if(T.crime){ const m={}; (INF.cache.regs.get(id)||[]).forEach(r=>{ m[r.crime]=(m[r.crime]||0)+1; }); Object.entries(m).forEach(([cr,n])=>out.push(['c:'+cr,{label:String(n),font:{size:10,strokeWidth:3,strokeColor:'#fff'},color:{color:'#e8845a'}}])); }
+      if(T.ddu) (INF.cache.ddusDe.get(id)||[]).forEach(d=>out.push(['d:'+d.id,{color:{color:'#d33a2c'},dashes:[2,3]}]));
+      if(T.gov) (INF.cache.govP.get(id)||[]).forEach(g=>out.push([gk(g),{label:g.papel,font:{size:9,strokeWidth:3,strokeColor:'#fff'},color:{color:'#8a63b5'},width:2}]));
+    } else if(t==='l'){ const l=INF.locais.find(x=>x.id===+v); if(l) out.push(['p:'+l.pessoa_id,{dashes:[3,4],color:{color:'#b9ad84'}}]);
+    } else if(t==='c'){ const ids=[...new Set(INF.registros.filter(r=>r.crime===v).map(r=>r.pessoa_id))].filter(i=>byId.has(i)).sort((a,b)=>((S().get(b)||{}).total||0)-((S().get(a)||{}).total||0)); ids.forEach(i=>out.push(['p:'+i,{color:{color:'#e8845a'}}]));
+    } else if(t==='d'){ INF.ddupes.filter(x=>x.ddu_id===+v).forEach(x=>{ if(byId.has(x.pessoa_id)) out.push(['p:'+x.pessoa_id,{color:{color:'#d33a2c'},dashes:[2,3]}]); });
+    } else if(t==='g'){ INF.gov.filter(g=>gk(g)===key).forEach(g=>{ if(byId.has(g.pessoa_id)) out.push(['p:'+g.pessoa_id,{label:g.papel,font:{size:9,strokeWidth:3,strokeColor:'#fff'},color:{color:'#8a63b5'},width:2}]); }); }
+    return out; };
+  const expandir=(key,silencioso)=>{ if(exp.has(key)) return 0; exp.add(key); let n=0; const V=vizinhos(key); let novos=0;
+    V.forEach(([k,o])=>{ const ja=!!N.get(k); if(!ja){ if(novos>=CAP) return; novos++; } if(addN(k)){ const from=o.from||key, to=o.to||k; const {from:_f,to:_t,...resto}=o; addE(from,to,resto); n++; } });
+    N.update({id:key,borderWidth:5,shadow:{enabled:true,color:'#e0b84a',size:14,x:0,y:0}}); cnt(); return V.length>novos+V.filter(([k])=>!!N.get(k)).length?V.length-novos:0; };
+  const net=new vis.Network(document.getElementById('nm-canvas'),{nodes:N,edges:E},{physics:{solver:'barnesHut',barnesHut:{gravitationalConstant:-6500,springLength:120,springConstant:.04,damping:.4},stabilization:{iterations:150}},interaction:{hover:true,tooltipDelay:150},edges:{smooth:{type:'continuous'}}});
+  INF.neural=net;
+  const side=document.getElementById('nm-side');
+  const painel=key=>{ const [t,...r]=key.split(':'); const v=r.join(':'); let h=`<div class="nm-tp">${NM_TIPOS[t]}</div>`;
+    if(t==='p'){ const p=byId.get(+v), a=S().get(p.id)||{}; h+=`<b style="font-size:15px">${esc(infNomeExib(p))}</b><div style="margin:6px 0">${infBadge(p.status)} ${(p.rede||p.faccao)?`<span class="if-b" style="background:${infCorFaccao(p.faccao||p.rede)}">${esc(p.rede||p.faccao)}</span>`:''} ${infRiscoHtml(p.risco)}</div><div style="font-size:12.5px">${esc([p.cargo,p.bairro,p.companhia].filter(Boolean).join(' · '))}</div>${a.posGeral?`<div style="margin-top:6px">🎯 Alvo <b>#${a.posGeral}</b> · ${a.total} pts</div>`:''}<div style="font-size:12px;color:#666;margin-top:4px">${(INF.cache.adj.get(p.id)||[]).length} vínculos · ${(INF.cache.regs.get(p.id)||[]).length} registros · ${(INF.cache.ddusDe.get(p.id)||[]).length} denúncias</div><button class="btn if-sm" id="nm-open" style="margin-top:8px">Abrir dossiê</button>`; }
+    else if(t==='l'){ const l=INF.locais.find(x=>x.id===+v); const p=byId.get(l.pessoa_id); h+=`<b>${esc(l.tipo||'Local')}</b><div style="font-size:12.5px">${esc([l.descricao,l.bairro].filter(Boolean).join(' · '))}</div>${l.obs?`<div style="font-size:12px;color:#666">${esc(l.obs)}</div>`:''}${p?`<div style="margin-top:6px;font-size:12.5px">Infrator: <a href="#" data-pk="p:${p.id}">${esc(infCurto(p))}</a></div>`:''}`; }
+    else if(t==='c'){ const rs=INF.registros.filter(x=>x.crime===v); const ids=new Set(rs.map(x=>x.pessoa_id)); h+=`<b>${esc(v)}</b><div style="font-size:12.5px;margin-top:4px">${rs.length} registros · ${ids.size} infratores</div>`; }
+    else if(t==='d'){ const d=INF.cache.dduById.get(+v); h+=`<b style="font-family:monospace">${esc(d.protocolo)}</b><div style="font-size:12.5px">${esc(infDataHora(d.data_criacao)||'')}</div><div style="font-size:12.5px">${esc(d.natureza_desc||'')}${d.indexador_desc?' · '+esc(d.indexador_desc):''}</div>${d.relato?`<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px">Relato</summary><div style="white-space:pre-wrap;font-size:12px;max-height:160px;overflow:auto">${esc(d.relato)}</div></details>`:''}`; }
+    else if(t==='g'){ const L=INF.gov.filter(g=>gk(g)===key); const f=L[0]||{}; h+=`<b>${esc(f.regiao||f.rede||'Governança')}</b><div style="font-size:12.5px">${esc([f.companhia,f.batalhao,f.rede].filter(Boolean).join(' · '))}</div>${(f.bairros||[]).length?`<div style="font-size:12px;color:#666">Bairros: ${esc(f.bairros.join(', '))}</div>`:''}<div style="margin-top:6px;font-size:12.5px">${L.map(g=>{ const p=byId.get(g.pessoa_id); return p?`<div>• ${esc(g.papel)}: <a href="#" data-pk="p:${p.id}">${esc(infCurto(p))}</a></div>`:''; }).join('')}</div>`; }
+    h+=`<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn secundario if-sm" id="nm-hide">Ocultar nó</button></div>`;
+    side.innerHTML=h;
+    const o=document.getElementById('nm-open'); if(o) o.onclick=()=>abrir(+v);
+    document.getElementById('nm-hide').onclick=()=>{ E.remove(E.get().filter(e=>e.from===key||e.to===key).map(e=>e.id)); N.remove(key); exp.delete(key); cnt(); side.innerHTML='<div style="color:#888">Nó ocultado.</div>'; };
+    side.querySelectorAll('[data-pk]').forEach(a=>a.onclick=e=>{ e.preventDefault(); const k=a.dataset.pk; if(addN(k)){ addE(key,k,{}); } expandir(k); net.selectNodes([k]); net.focus(k,{scale:1,animation:true}); painel(k); }); };
+  net.on('click',ev=>{ if(!ev.nodes.length) return; const k=ev.nodes[0]; const falt=expandir(k); painel(k); if(falt) side.insertAdjacentHTML('beforeend',`<div style="font-size:11.5px;color:#8a5a00;margin-top:8px">Há mais ${falt} conexões — limitei a ${CAP} por clique.</div>`); });
+  net.on('doubleClick',ev=>{ if(ev.nodes.length&&ev.nodes[0][0]==='p') abrir(+ev.nodes[0].slice(2)); });
+  const semear=()=>{ N.clear(); E.clear(); exp.clear(); (op.seed||[]).forEach(id=>addN('p:'+id)); (op.expand||[]).forEach(id=>expandir('p:'+id)); cnt(); setTimeout(()=>{ try{ net.fit({animation:true}); }catch(e){} },900); };
+  c.querySelectorAll('[data-nt]').forEach(i=>i.onchange=()=>{ T[i.dataset.nt]=i.checked; });
+  document.getElementById('nm-rst').onclick=()=>{ semear(); side.innerHTML='<div style="color:#888">Mapa reiniciado.</div>'; };
+  document.getElementById('nm-fit').onclick=()=>net.fit({animation:true});
+  document.getElementById('nm-all').onclick=()=>{ N.getIds().filter(k=>k[0]==='p'&&!exp.has(k)).slice(0,12).forEach(k=>expandir(k)); };
+  document.getElementById('nm-png').onclick=()=>{ const cv=document.querySelector('#nm-canvas canvas'); if(!cv) return; const a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='mapa-neural.png'; a.click(); };
+  document.getElementById('nm-add').onchange=e=>{ const m=String(e.target.value).match(/#(\d+)$/); if(!m) return; const k='p:'+m[1]; if(addN(k)){ expandir(k); net.focus(k,{scale:1,animation:true}); painel(k); } e.target.value=''; };
+  semear();
+}
+function infFichaNeural(c,p){ c.innerHTML='<div id="nm-host"></div>'; infNeural(document.getElementById('nm-host'),{seed:[p.id],expand:[p.id],abrir:id=>infFicha(id,'neural')}); }
 
 async function renderAreaDashboard(areaId, cfg, filtros={}){
   const box = document.getElementById('area-corpo');
