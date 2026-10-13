@@ -499,6 +499,7 @@ async function renderArea(areaId, opts={}){
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='os'?'ativo':''}" data-tab="os">📑 O.S.</div>` : ''}
       ${areaId==='P3' ? `<div class="tab-area ${abaArea==='produtividade'?'ativo':''}" data-tab="produtividade">📈 Produtividade</div>` : ''}
       ${areaId==='P2' ? `<div class="tab-area ${abaArea==='infratores'?'ativo':''}" data-tab="infratores">🕸️ Infratores</div>` : ''}
+      ${areaId==='P2' ? `<div class="tab-area ${abaArea==='osint'?'ativo':''}" data-tab="osint">🔎 Fontes OSINT</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='aniversario'?'ativo':''}" data-tab="aniversario">🎂 Aniversários</div>` : ''}
       ${areaId==='P5' ? `<div class="tab-area ${abaArea==='edital'?'ativo':''}" data-tab="edital">📑 Edital</div>` : ''}
     </div>
@@ -515,6 +516,7 @@ async function renderArea(areaId, opts={}){
   if(abaArea==='aniversario' && areaId==='P5') return renderAreaAniversario(areaId, acesso);
   if(abaArea==='edital' && areaId==='P5') return renderAreaEdital(areaId, acesso);
   if(abaArea==='infratores' && areaId==='P2') return renderAreaInfratores(areaId, acesso);
+  if(abaArea==='osint' && areaId==='P2') return renderAreaOSINT(areaId, acesso);
 
   let d;
   try{ d = await api('listarRegistros', {area_id:areaId, busca:opts.busca, dataInicio:opts.dataInicio, dataFim:opts.dataFim}); }
@@ -4115,6 +4117,131 @@ function infConjunto(){
 
 function infConjuntoPessoa(pid,prof){ const set=infBFS(+pid,+prof||1); const ids=new Set(set); ids.add(+pid); const lista=INF.pessoas.filter(p=>ids.has(p.id)); return {lista,ids,vis:ids}; }
 // ---------- entrada ----------
+
+// ---------- ABA FONTES OSINT (P2) ----------
+// Organiza URLs fornecidas pelo operador. Não identifica pessoas por face
+// nem automatiza enumeração/rastreamento de contas pessoais.
+function renderAreaOSINT(areaId, acesso){
+  const box = document.getElementById('area-corpo');
+  box.innerHTML = `
+    <div class="painel-box">
+      <h3>🔎 Triagem de fontes públicas</h3>
+      <p style="color:#687386;font-size:13px;line-height:1.5">
+        Cole links obtidos em pesquisas autorizadas, um por linha. O painel classifica
+        o domínio e permite registrar a revisão manual. A classificação não confirma
+        autoria, identidade, disponibilidade ou veracidade do conteúdo.
+      </p>
+      <label for="osint-urls">URLs</label>
+      <textarea id="osint-urls" rows="6" style="width:100%;box-sizing:border-box"
+        placeholder="https://www.instagram.com/...&#10;https://www.facebook.com/..."></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn" id="osint-processar">Classificar links</button>
+        <button class="btn secundario" id="osint-limpar">Limpar</button>
+      </div>
+      <div id="osint-resumo" style="margin-top:14px"></div>
+      <div id="osint-tabela" style="margin-top:12px"></div>
+      <div style="margin-top:12px">
+        <button class="btn secundario" id="osint-exportar" disabled>Exportar CSV</button>
+      </div>
+    </div>
+  `;
+
+  let rows = [];
+  const classify = raw => {
+    let u;
+    try {
+      u = new URL(raw.trim());
+      if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo');
+    } catch (_) {
+      return { plataforma:'URL inválida', tipo:'Indeterminado', status:'Formato inválido' };
+    }
+    const host = u.hostname.toLowerCase().replace(/\.$/, '');
+    const belongs = domain => host === domain || host.endsWith('.' + domain);
+    let plataforma = 'Outros', tipo = 'Página ou conteúdo';
+    if (['instagram.com','cdninstagram.com'].some(belongs)) {
+      plataforma = 'Instagram';
+      tipo = belongs('cdninstagram.com') ? 'CDN de mídia' :
+        (/^\/(p|reel|reels|stories|tv)\//.test(u.pathname) ? 'Publicação ou conteúdo' :
+        (u.pathname.length > 1 ? 'Perfil ou rota' : 'Página inicial'));
+    } else if (['facebook.com','fb.com','fb.watch','fbcdn.net'].some(belongs)) {
+      plataforma = 'Facebook';
+      tipo = (belongs('fbcdn.net')) ? 'CDN de mídia' :
+        (belongs('fb.watch')) ? 'Vídeo' :
+        (/^\/(groups|pages|watch|share)\//.test(u.pathname) ? 'Grupo, página ou conteúdo' :
+        (u.pathname.length > 1 ? 'Perfil ou rota' : 'Página inicial'));
+    } else if (belongs('tiktok.com')) {
+      plataforma = 'TikTok';
+      tipo = /^\/@[^/]+/.test(u.pathname) ? 'Rota de perfil' :
+        (/^\/(video|embed)\//.test(u.pathname) ? 'Conteúdo' : 'Outra rota TikTok');
+    } else if (['t.me','telegram.me'].some(belongs)) {
+      plataforma = 'Telegram';
+      tipo = u.pathname.length > 1 ? 'Canal, grupo ou rota pública' : 'Página inicial';
+    }
+    return { plataforma, tipo, status:'Formato plausível' };
+  };
+
+  const escOS = v => String(v ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const render = () => {
+    const summary = {};
+    rows.forEach(r => summary[r.plataforma] = (summary[r.plataforma] || 0) + 1);
+    document.getElementById('osint-resumo').innerHTML =
+      `<div class="cards-resumo">
+        <div class="card-resumo"><div class="num">${rows.length}</div><div class="lbl">URLs únicas</div></div>
+        ${Object.entries(summary).map(([k,v]) =>
+          `<div class="card-resumo"><div class="num">${v}</div><div class="lbl">${escOS(k)}</div></div>`
+        ).join('')}
+      </div>`;
+    document.getElementById('osint-tabela').innerHTML = rows.length ? `
+      <div style="overflow:auto"><table>
+        <thead><tr><th>Plataforma</th><th>Tipo</th><th>URL</th><th>Revisão</th><th>Observações</th></tr></thead>
+        <tbody>${rows.map((r,i)=>`<tr>
+          <td>${escOS(r.plataforma)}</td><td>${escOS(r.tipo)}</td>
+          <td><a href="${escOS(r.url)}" target="_blank" rel="noopener noreferrer">Abrir link ↗</a></td>
+          <td><select data-os-review="${i}">
+            ${['Pendente','Revisado','Não confirmado','Descartado'].map(x=>`<option ${r.revisao===x?'selected':''}>${x}</option>`).join('')}
+          </select></td>
+          <td><input data-os-note="${i}" value="${escOS(r.observacoes)}" placeholder="Nota de revisão" style="min-width:160px"></td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<p style="color:#888">Nenhum resultado processado.</p>';
+    document.getElementById('osint-exportar').disabled = !rows.length;
+    document.querySelectorAll('[data-os-review]').forEach(el => el.addEventListener('change', e => {
+      rows[+e.target.dataset.osReview].revisao = e.target.value;
+    }));
+    document.querySelectorAll('[data-os-note]').forEach(el => el.addEventListener('change', e => {
+      rows[+e.target.dataset.osNote].observacoes = e.target.value;
+    }));
+  };
+
+  document.getElementById('osint-processar').addEventListener('click', () => {
+    const input = document.getElementById('osint-urls').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    const seen = new Set();
+    rows = input.filter(url => {
+      if (seen.has(url)) return false;
+      seen.add(url); return true;
+    }).map(url => ({url, ...classify(url), revisao:'Pendente', observacoes:''}));
+    render();
+  });
+  document.getElementById('osint-limpar').addEventListener('click', () => {
+    rows = [];
+    document.getElementById('osint-urls').value = '';
+    document.getElementById('osint-resumo').innerHTML = '';
+    document.getElementById('osint-tabela').innerHTML = '';
+    document.getElementById('osint-exportar').disabled = true;
+  });
+  document.getElementById('osint-exportar').addEventListener('click', () => {
+    const cols = ['plataforma','tipo','url','status','revisao','observacoes'];
+    const csvCell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const csv = [cols.join(','), ...rows.map(r=>cols.map(c=>csvCell(r[c])).join(','))].join('\r\n');
+    const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'triagem-fontes-osint.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
 async function renderAreaInfratores(areaId, acesso){
   infInjetarCss();
   const box=document.getElementById('area-corpo');
