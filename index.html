@@ -4126,14 +4126,14 @@ function renderAreaOSINT(areaId, acesso){
   box.innerHTML = `
     <div class="painel-box" style="max-width:1100px;margin:0 auto">
       <h3 style="font-size:20px">🔎 Agente de Pesquisa OSINT</h3>
-      <p style="font-size:13px;color:#687386;line-height:1.6">Informe um contexto ou anexe um arquivo. O agente extrai texto quando possível, combina os termos e consulta fontes públicas indexadas; os resultados são exibidos aqui. Não pesquisa CPF/RG, não identifica pessoas pela face e não garante cobertura de toda a internet.</p>
+      <p style="font-size:13px;color:#687386;line-height:1.6">Anexe uma foto para leitura automática do texto visível. Se quiser, escreva ao lado informações complementares para orientar a busca. O sistema consulta fontes públicas indexadas; não identifica pessoas pela face nem garante cobertura de toda a internet.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:16px">
-        <div><label for="osint-query">Texto / contexto para pesquisa</label><textarea id="osint-query" rows="5" maxlength="4000" placeholder="Nome público, empresa, função pública, local ou contexto relevante..."></textarea></div>
-        <div><label for="osint-file">Adicionar foto ou documento</label><input id="osint-file" type="file" accept="image/*,.pdf,.txt,.csv,.md,.docx" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><div id="osint-file-meta" style="font-size:12px;color:#687386;margin-top:6px">A extração ocorre no navegador. A imagem não é usada para reconhecimento facial.</div><div id="osint-file-preview" style="margin-top:8px"></div></div>
+        <div><label for="osint-query">Texto complementar (opcional)</label><textarea id="osint-query" rows="4" maxlength="4000" placeholder="Acrescente nome de local, letreiro, evento, contexto ou palavras visíveis. Pode deixar em branco."></textarea><label for="osint-category" style="display:block;margin-top:10px">Tipo principal da imagem</label><select id="osint-category" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><option value="geral">Todos / não sei</option><option value="pessoas_contexto">Pessoa em local ou evento (busca contextual, sem reconhecimento facial)</option><option value="documentos">Texto e documentos</option><option value="veiculos">Veículos e objetos</option><option value="locais">Locais e estabelecimentos</option></select></div>
+        <div><label for="osint-file">Anexar foto</label><input id="osint-file" type="file" accept="image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><div id="osint-file-meta" style="font-size:12px;color:#687386;margin-top:6px">Anexe uma imagem JPG, PNG ou WEBP (máximo 10 MB). O texto visível será lido automaticamente; não há reconhecimento facial.</div><div id="osint-file-preview" style="margin-top:8px"></div></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn" id="osint-search-main" type="button">🔎 BUSCAR</button><button class="btn secundario" id="osint-clear-main" type="button">Limpar</button><button class="btn secundario" id="osint-export-main" type="button" disabled>Exportar JSON</button></div>
       <div id="osint-main-status" role="status" style="margin-top:14px;font-size:13px;color:#687386"></div><div id="osint-main-warning" style="display:none;margin-top:14px;padding:12px;border-radius:8px;background:#fff7e6;border:1px solid #e6c56d;color:#6f5310"></div><div id="osint-main-results" style="margin-top:18px"></div>
-      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:16px">A pesquisa consulta apenas páginas públicas indexadas pelo provedor configurado. Não existe uma busca única que cubra todas as páginas da internet. Use apenas informações cuja consulta seja autorizada; resultados são pistas para revisão humana, não confirmação de identidade.</p>
+      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:16px">A pesquisa usa o texto complementar opcional e o texto que conseguir ler na foto para consultar páginas públicas indexadas. Não faz reconhecimento facial nem confirma a identidade de ninguém. Use apenas informações cuja consulta seja autorizada.</p>
     </div>`;
   const $=id=>document.getElementById(id); let lastResults=null, extractedText='';
   const fileInput=$('osint-file'), meta=$('osint-file-meta'), preview=$('osint-file-preview'), status=$('osint-main-status'), warn=$('osint-main-warning'), out=$('osint-main-results'), exportBtn=$('osint-export-main');
@@ -4143,46 +4143,42 @@ function renderAreaOSINT(areaId, acesso){
     if(f.size>10*1024*1024){fileInput.value='';meta.textContent='Arquivo acima do limite de 10 MB.';showWarn('Selecione um arquivo de até 10 MB.');return;}
     meta.textContent=`Preparando ${f.name} (${(f.size/1024/1024).toFixed(2)} MB)…`; status.textContent=''; warn.style.display='none';
     try{
-      const ext=(f.name.split('.').pop()||'').toLowerCase();
-      if(f.type.startsWith('text/')||['txt','csv','md'].includes(ext)) extractedText=(await f.text()).slice(0,12000);
-      else if(ext==='pdf'){
-        if(!window.pdfjsLib) await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc);});
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        const pdf=await window.pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise; let chunks=[];
-        for(let n=1;n<=Math.min(pdf.numPages,20);n++){const pg=await pdf.getPage(n),c=await pg.getTextContent();chunks.push(c.items.map(x=>x.str).join(' '));}
-        extractedText=chunks.join('\n').slice(0,12000);
-      } else if(ext==='docx'){
-        if(!window.mammoth) await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc);});
-        const r=await window.mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()}); extractedText=r.value.slice(0,12000);
-      } else if(f.type.startsWith('image/')){
+      if(f.type.startsWith('image/')){
         const url=URL.createObjectURL(f); const img=document.createElement('img');img.src=url;img.alt='Prévia da imagem';img.style.cssText='max-width:180px;max-height:180px;object-fit:contain;border:1px solid #ddd;border-radius:8px;padding:4px';preview.appendChild(img);
         if(!window.Tesseract) await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc);});
         meta.textContent='Lendo texto visível da imagem no navegador…'; const r=await window.Tesseract.recognize(f,'por+eng'); extractedText=(r.data.text||'').slice(0,12000); URL.revokeObjectURL(url);
-      } else throw new Error('Formato não suportado. Use imagem, PDF, TXT, CSV, MD ou DOCX.');
-      meta.textContent=`Arquivo lido: ${f.name}. ${extractedText.trim()?`Texto extraído: ${extractedText.trim().length} caracteres.`:'Nenhum texto extraível encontrado.'}`;
-      if(extractedText.trim() && !$('osint-query').value.trim()) $('osint-query').value=extractedText.slice(0,4000);
+      } else throw new Error('Formato não suportado. Anexe uma foto JPG, PNG ou WEBP.');
+      meta.textContent=`Foto carregada: ${f.name}. ${extractedText.trim()?`Texto visível extraído: ${extractedText.trim().length} caracteres.`:'Não foi possível reconhecer texto visível; você pode complementar no campo opcional.'}`;
     }catch(e){meta.textContent='Não foi possível extrair o conteúdo: '+e.message;showWarn('Falha na leitura do arquivo. Você pode digitar manualmente o contexto.');}
   });
   $('osint-search-main').addEventListener('click',async()=>{
     warn.style.display='none';out.innerHTML='';lastResults=null;exportBtn.disabled=true;
-    const query=$('osint-query').value.trim()||extractedText.trim();
-    if(!query){showWarn('Digite um contexto ou anexe um arquivo com texto extraível.');return;}
+    const context=$('osint-query').value.trim(), ocr=extractedText.trim();
+    const query=[context,ocr].filter(Boolean).join('\n');
+    if(!fileInput.files.length && !context){showWarn('Anexe uma foto ou preencha o texto complementar opcional para iniciar a busca.');return;}
     const normalized=query.replace(/[.\s-]/g,'');
     if(/\b(?:CPF|RG|documento de identidade)\b\s*[:#-]?\s*\d/i.test(query)||/^\d{11}$/.test(normalized)||/^\d{7,12}$/.test(normalized)){showWarn('A pesquisa por CPF/RG ou números de documentos para reunir dados pessoais não está habilitada. Use canais oficiais autorizados para verificações legalmente permitidas.');return;}
     status.textContent='Agente analisando o texto e consultando fontes públicas indexadas…';$('osint-search-main').disabled=true;
     try{
-      const response=await fetch('/api/osint-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:query.slice(0,6000),fileName:(fileInput.files[0]||{}).name||''})});
-      const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||'A API de pesquisa não está configurada.');
+      const response=await fetch('/api/osint-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:query.slice(0,6000),ocrText:ocr.slice(0,3000),category:$('osint-category').value,fileName:(fileInput.files[0]||{}).name||''})});
+      const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||'A API de pesquisa não está configurada. Configure SERPAPI_KEY no Vercel e publique a função /api/osint-search.');
       lastResults=data; const results=Array.isArray(data.results)?data.results:[];
       status.textContent=`Consulta concluída · ${results.length} resultado(s) · ${new Date().toLocaleString('pt-BR')}`;
       if(!results.length){out.textContent='Nenhum resultado retornado. Tente acrescentar contexto público não sensível.';return;}
-      const heading=document.createElement('h4');heading.textContent='Resultados para revisão';out.appendChild(heading);
-      results.forEach((r,i)=>{const card=document.createElement('div');card.style.cssText='border:1px solid #d8dee8;border-radius:9px;padding:12px;margin:8px 0;background:#fff';const a=document.createElement('a');a.href=r.link;a.target='_blank';a.rel='noopener noreferrer';a.textContent=r.title||r.link;a.style.cssText='font-weight:700;color:#23466b';const p=document.createElement('p');p.textContent=r.snippet||'Sem resumo fornecido.';p.style.cssText='font-size:13px;color:#4b5563;margin:6px 0';const src=document.createElement('div');src.textContent=r.source||(()=>{try{return new URL(r.link).hostname}catch(e){return 'Fonte externa'}})();src.style.cssText='font-size:11px;color:#687386';card.append(a,p,src);out.appendChild(card);});exportBtn.disabled=false;
+      const analysis=document.createElement('section');analysis.style.cssText='border:1px solid #d8dee8;border-radius:10px;padding:14px;margin:12px 0;background:#f8fafc';
+      const at=document.createElement('h4');at.textContent='Resumo da análise textual';at.style.margin='0 0 8px';analysis.appendChild(at);
+      const summary=document.createElement('p');summary.textContent=data.analysisSummary||'A análise priorizou termos do texto extraído. Confira os resultados manualmente.';summary.style.cssText='font-size:13px;color:#475569;margin:4px 0 10px';analysis.appendChild(summary);
+      if(data.ocrText){const ocrTitle=document.createElement('strong');ocrTitle.textContent='Texto extraído da foto (OCR)';ocrTitle.style.cssText='display:block;font-size:12px;margin-top:8px';analysis.appendChild(ocrTitle);const ocrBox=document.createElement('p');ocrBox.textContent=data.ocrText;ocrBox.style.cssText='white-space:pre-wrap;font-size:12px;color:#475569;margin:5px 0;max-height:120px;overflow:auto';analysis.appendChild(ocrBox);}
+      const cand=Array.isArray(data.nameCandidates)?data.nameCandidates:[];const candTitle=document.createElement('strong');candTitle.textContent='Possíveis nomes/trechos identificados no texto';candTitle.style.cssText='display:block;font-size:12px;margin-top:10px';analysis.appendChild(candTitle);
+      const candText=document.createElement('p');candText.textContent=cand.length?cand.map(x=>`${x.text} — ${x.confidence}`).join(' · '):'Nenhum nome próprio foi separado com confiança. Tente uma imagem mais nítida ou acrescente contexto textual.';candText.style.cssText='font-size:12px;color:#475569;margin:5px 0';analysis.appendChild(candText);
+      const disclaimer=document.createElement('p');disclaimer.textContent='Os nomes acima são apenas trechos textuais sugeridos pelo OCR. Não confirmam a identidade de nenhuma pessoa na foto.';disclaimer.style.cssText='font-size:11px;color:#64748b;margin:8px 0 0';analysis.appendChild(disclaimer);out.appendChild(analysis);
+      const heading=document.createElement('h4');heading.textContent='Resultados para revisão (ordenados por correspondência textual)';out.appendChild(heading);
+      results.forEach((r,i)=>{const card=document.createElement('div');card.style.cssText='border:1px solid #d8dee8;border-radius:9px;padding:12px;margin:8px 0;background:#fff';const grp=document.createElement('div');grp.textContent=r.searchGroup||'Pesquisa na web';grp.style.cssText='font-size:11px;font-weight:700;color:#53657b;margin-bottom:4px';const a=document.createElement('a');a.href=r.link;a.target='_blank';a.rel='noopener noreferrer';a.textContent=r.title||r.link;a.style.cssText='font-weight:700;color:#23466b';const p=document.createElement('p');p.textContent=r.snippet||'Sem resumo fornecido.';p.style.cssText='font-size:13px;color:#4b5563;margin:6px 0';const why=document.createElement('div');why.textContent=`Relevância textual: ${Number(r.relevanceScore||0)}% — ${r.relevanceReason||'Confira a correspondência manualmente.'}`;why.style.cssText='font-size:12px;color:#475569;margin:6px 0';const src=document.createElement('div');src.textContent=r.source||(()=>{try{return new URL(r.link).hostname}catch(e){return 'Fonte externa'}})();src.style.cssText='font-size:11px;color:#687386';card.append(grp,a,p,why,src);out.appendChild(card);});exportBtn.disabled=false;
     }catch(e){status.textContent='';showWarn(e.message+' Verifique se a função /api/osint-search está publicada na Vercel e se a chave do provedor foi configurada.');}
     finally{$('osint-search-main').disabled=false;}
   });
   exportBtn.addEventListener('click',()=>{if(!lastResults)return;const blob=new Blob([JSON.stringify(lastResults,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='osint-resultados-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);});
-  $('osint-clear-main').addEventListener('click',()=>{$('osint-query').value='';fileInput.value='';preview.innerHTML='';extractedText='';lastResults=null;meta.textContent='Nenhum arquivo selecionado.';status.textContent='';warn.style.display='none';out.innerHTML='';exportBtn.disabled=true;});
+  $('osint-clear-main').addEventListener('click',()=>{$('osint-query').value='';$('osint-category').value='geral';fileInput.value='';preview.innerHTML='';extractedText='';lastResults=null;meta.textContent='Nenhum arquivo selecionado.';status.textContent='';warn.style.display='none';out.innerHTML='';exportBtn.disabled=true;});
 }
 
 function infFotosMapa(){ const m=new Map(); (INF.fotos||[]).forEach(f=>{ (m.get(f.pessoa_id)||m.set(f.pessoa_id,[]).get(f.pessoa_id)).push(f); }); m.forEach(a=>a.sort((x,y)=>(y.principal?1:0)-(x.principal?1:0)||x.id-y.id)); INF.fotoMap=m; }

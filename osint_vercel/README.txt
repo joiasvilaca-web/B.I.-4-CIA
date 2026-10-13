@@ -1,19 +1,27 @@
 BI 4ª CIA PM Ind GER — Agente de Pesquisa OSINT
 
-ESTRUTURA
+Estrutura esperada na raiz do repositório (Root Directory do Vercel = osint_vercel):
 - index.html
-- api/osint-search.js
 - package.json
+- api/osint-search.js
 
-COMO PUBLICAR
-1. Envie o conteúdo desta pasta para a raiz do repositório GitHub, preservando a pasta api.
-2. Conecte/importe o repositório no Vercel.
-3. No Vercel, abra Settings > Environment Variables e configure SERPAPI_KEY com sua chave SerpApi.
-4. Faça um novo deploy.
-5. Teste a pesquisa com termos públicos não sensíveis.
+Melhorias desta versão:
+- OCR de fotos no navegador (Tesseract.js, português + inglês).
+- Texto complementar opcional.
+- A API recebe o OCR separadamente, tenta destacar trechos que podem ser nomes escritos na imagem e constrói consultas com termos mais informativos.
+- Deduplicação e ordenação heurística dos resultados por correspondência textual.
+- A interface mostra o OCR extraído, possíveis nomes/trechos, razão da relevância e links de fontes públicas.
+- A API não faz reconhecimento facial, comparação de rostos ou confirmação de identidade.
+- Consultas por CPF/RG ou números de documentos para reunir dados pessoais são bloqueadas.
 
-A interface aceita fotos (JPG/PNG/WEBP) e um campo de texto complementar opcional. O texto visível na foto é extraído localmente por OCR; a imagem original não é enviada à API de busca. Não há reconhecimento facial.
+Configuração Vercel:
+1. Root Directory: osint_vercel
+2. Environment Variable: SERPAPI_KEY (valor secreto da conta SerpApi), ambiente Production
+3. Fazer commit dos arquivos e aguardar novo deploy Ready.
 
-Se aparecer aviso de API não configurada, confira se api/osint-search.js está na raiz do projeto dentro de api/, se SERPAPI_KEY está definida no Vercel e se o projeto foi redeployado. Apenas enviar os arquivos ao GitHub não ativa a API.
-
-A busca retorna páginas públicas indexadas pelo provedor, não todas as páginas da internet. Resultados exigem revisão humana. Antes de uso operacional, configure autenticação/autorização, limites de requisição e políticas adequadas de retenção e registro.
+Notas e limitações:
+- Os nomes sugeridos são candidatos textuais extraídos por heurística do OCR, não identidade da pessoa na foto. Podem ser falsos positivos e precisam de conferência humana.
+- A pontuação de relevância é heurística por sobreposição textual, não uma probabilidade estatística nem garantia de qualidade.
+- A pesquisa consulta resultados públicos indexados pelo provedor, não toda a internet.
+- A busca usa SerpApi/Google organic results. Não é busca reversa de imagem.
+- Antes de uso operacional, proteja o endpoint com autenticação/autorização, limites de requisição, tratamento de logs e política de retenção adequados.
