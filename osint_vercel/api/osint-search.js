@@ -15,6 +15,22 @@ function extractNameCandidates(text) {
   }
   return candidates.slice(0, 8);
 }
+function extractCandidatesFromResults(results) {
+  const out = [];
+  const stop = /\b(google|youtube|facebook|instagram|linkedin|pinterest|noticias|notícias|jornal|oficial|site|portal|matematica|matemática|worksheet|resultado|resultados|brasil|brasileiro|brasileira|prefeitura|governo|universidade|policia|polícia|policial|companhia|empresa|servicos|serviços|login|sign|home|about|contact|subscribe)\b/i;
+  for (const r of results) {
+    const text = cleanText(`${r.title || ''}. ${r.snippet || ''}`);
+    const re = /\b(?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç'-]{2,})(?:\s+(?:de|da|do|dos|das|e)\s+|\s+)(?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç'-]{2,})(?:\s+(?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç'-]{2,}))?/g;
+    for (const m of text.matchAll(re)) {
+      const name = cleanText(m[0]);
+      if (name.split(/\s+/).length >= 2 && name.length <= 70 && !stop.test(name) && !out.some(x => normalize(x.text) === normalize(name))) {
+        out.push({ text: name, source: 'Título/resumo de uma fonte pública', confidence: 'baixa; conferir a fonte original' });
+      }
+      if (out.length >= 8) return out;
+    }
+  }
+  return out;
+}
 function informativeTerms(text) {
   const stop = new Set(('para com uma umas uns que por das dos dele dela este esta esse essa isso aquilo foto imagem texto visivel visível nome possivel possível pesquisa busca pessoa local evento noticia notícia fonte publica pública resultado encontrado documento documento').split(' '));
   const counts = new Map();
@@ -70,7 +86,13 @@ export default async function handler(req, res) {
     const seen = new Set();
     const unique = all.filter(x=>{let k=x.link.split('#')[0].replace(/\/$/,'');if(seen.has(k))return false;seen.add(k);return true;});
     const results = unique.map(x=>relevance(x,terms,candidates)).sort((a,b)=>b.relevanceScore-a.relevanceScore).slice(0,20);
-    return res.status(200).json({query:base,category,searchedAt:new Date().toISOString(),provider:'SerpApi / Google organic results',ocrText:cleanText(body.ocrText || '' ).slice(0,3000),nameCandidates:candidates.map(name=>({text:name,source:'Trecho textual detectado por OCR',confidence:'baixa a moderada; requer conferência'})),analysisSummary:candidates.length?`Foram encontrados ${candidates.length} possíveis nomes/trechos no texto. Eles são apenas hipóteses de OCR e não identificam a pessoa fotografada.`:'Não foi possível separar nomes próprios com confiança a partir do OCR. Os resultados foram priorizados pelos termos mais informativos.',notes:'A análise usa OCR e contexto textual. Não faz reconhecimento facial, comparação de rostos nem confirmação de identidade.',results});
+    const ocrNames = candidates.map(name=>({text:name,source:'Texto detectado na imagem (OCR)',confidence:'baixa a moderada; confira a imagem original'}));
+    const sourceNames = extractCandidatesFromResults(results).filter(x=>!ocrNames.some(n=>normalize(n.text)===normalize(x.text)));
+    const nameCandidates = [...ocrNames, ...sourceNames].slice(0,12);
+    const analysisSummary = nameCandidates.length
+      ? `Foram encontrados ${nameCandidates.length} nomes ou trechos que merecem conferência: alguns vêm do OCR e outros aparecem em títulos/resumos de páginas públicas. Isso não demonstra que qualquer nome corresponda à pessoa fotografada.`
+      : 'Não foi possível separar nomes próprios com segurança do texto extraído ou dos resultados. Os links abaixo foram ordenados por correspondência textual; confira as fontes originais.';
+    return res.status(200).json({query:base,category,searchedAt:new Date().toISOString(),provider:'SerpApi / Google organic results',ocrText:cleanText(body.ocrText || '' ).slice(0,3000),nameCandidates,analysisSummary,notes:'Os nomes são extraídos somente de texto OCR ou de títulos/resumos de fontes públicas; não são identificações da pessoa na foto. Não há reconhecimento facial nem confirmação de identidade.',results});
   } catch (e) {
     return res.status(500).json({ error:'Erro interno ao processar a pesquisa.' });
   }
