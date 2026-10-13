@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const query = String(body.query || '').trim().slice(0, 6000);
-    if (!query) return res.status(400).json({ error: 'Informe um contexto para pesquisa.' });
+    if (!query) return res.status(400).json({ error: 'A foto foi recebida, mas não foi possível extrair texto suficiente para pesquisar. Tente uma imagem mais nítida ou acrescente palavras no campo opcional. A busca reversa pela imagem exige integração específica.' });
     const compact = query.replace(/[.\s-]/g, '');
     if (/\b(?:CPF|RG|documento de identidade)\b\s*[:#-]?\s*\d/i.test(query) || /^\d{11}$/.test(compact) || /^\d{7,12}$/.test(compact)) {
       return res.status(400).json({ error: 'Consultas por CPF/RG ou número de documento não são permitidas neste endpoint.' });
