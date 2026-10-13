@@ -4126,16 +4126,16 @@ function renderAreaOSINT(areaId, acesso){
   box.innerHTML = `
     <div class="painel-box" style="max-width:1100px;margin:0 auto">
       <h3 style="font-size:20px">🔎 Agente de Pesquisa OSINT</h3>
-      <p style="font-size:13px;color:#687386;line-height:1.6">Anexe uma foto para leitura automática do texto visível. Se quiser, escreva ao lado informações complementares para orientar a busca. O sistema consulta fontes públicas indexadas; não identifica pessoas pela face nem garante cobertura de toda a internet.</p>
+      <p style="font-size:13px;color:#687386;line-height:1.6">Anexe uma foto para leitura de texto e análise visual contextual (cenário, objetos, placas e pistas não biométricas). Se quiser, escreva informações complementares para orientar a busca. O sistema consulta fontes públicas indexadas; não identifica pessoas pela face nem garante cobertura de toda a internet.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:16px">
         <div><label for="osint-query">Texto complementar (opcional)</label><textarea id="osint-query" rows="4" maxlength="4000" placeholder="Acrescente nome de local, letreiro, evento, contexto ou palavras visíveis. Pode deixar em branco."></textarea><label for="osint-category" style="display:block;margin-top:10px">Tipo principal da imagem</label><select id="osint-category" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><option value="geral">Todos / não sei</option><option value="pessoas_contexto">Pessoa em local ou evento (busca contextual, sem reconhecimento facial)</option><option value="documentos">Texto e documentos</option><option value="veiculos">Veículos e objetos</option><option value="locais">Locais e estabelecimentos</option></select></div>
-        <div><label for="osint-file">Anexar foto</label><input id="osint-file" type="file" accept="image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><div id="osint-file-meta" style="font-size:12px;color:#687386;margin-top:6px">Anexe uma imagem JPG, PNG ou WEBP (máximo 10 MB). O texto visível será lido automaticamente; não há reconhecimento facial.</div><div id="osint-file-preview" style="margin-top:8px"></div></div>
+        <div><label for="osint-file">Anexar foto</label><input id="osint-file" type="file" accept="image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff"><div id="osint-file-meta" style="font-size:12px;color:#687386;margin-top:6px">Anexe uma imagem JPG, PNG ou WEBP (máximo 10 MB). A foto será analisada para texto e pistas contextuais; não há reconhecimento facial.</div><div id="osint-file-preview" style="margin-top:8px"></div></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn" id="osint-search-main" type="button">🔎 BUSCAR</button><button class="btn secundario" id="osint-clear-main" type="button">Limpar</button><button class="btn secundario" id="osint-export-main" type="button" disabled>Exportar JSON</button></div>
       <div id="osint-main-status" role="status" style="margin-top:14px;font-size:13px;color:#687386"></div><div id="osint-main-warning" style="display:none;margin-top:14px;padding:12px;border-radius:8px;background:#fff7e6;border:1px solid #e6c56d;color:#6f5310"></div><div id="osint-main-results" style="margin-top:18px"></div>
-      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:16px">A pesquisa usa o texto complementar opcional e o texto que conseguir ler na foto para consultar páginas públicas indexadas. Não faz reconhecimento facial nem confirma a identidade de ninguém. Use apenas informações cuja consulta seja autorizada.</p>
+      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:16px">A pesquisa usa o texto complementar, o OCR e pistas contextuais da imagem para consultar páginas públicas indexadas. Não faz reconhecimento facial nem confirma a identidade de ninguém. Use apenas informações cuja consulta seja autorizada.</p>
     </div>`;
-  const $=id=>document.getElementById(id); let lastResults=null, extractedText='';
+  const $=id=>document.getElementById(id); let lastResults=null, extractedText='', visualAnalysis=null;
   const fileInput=$('osint-file'), meta=$('osint-file-meta'), preview=$('osint-file-preview'), status=$('osint-main-status'), warn=$('osint-main-warning'), out=$('osint-main-results'), exportBtn=$('osint-export-main');
   const showWarn=t=>{warn.textContent=t;warn.style.display='block';};
   fileInput.addEventListener('change',async()=>{
@@ -4154,19 +4154,27 @@ function renderAreaOSINT(areaId, acesso){
   $('osint-search-main').addEventListener('click',async()=>{
     warn.style.display='none';out.innerHTML='';lastResults=null;exportBtn.disabled=true;
     const context=$('osint-query').value.trim(), ocr=extractedText.trim();
-    const query=[context,ocr].filter(Boolean).join('\n');
+    let query=[context,ocr].filter(Boolean).join('\n');
     if(!fileInput.files.length && !context){showWarn('Anexe uma foto ou preencha o texto complementar opcional para iniciar a busca.');return;}
     const normalized=query.replace(/[.\s-]/g,'');
     if(/\b(?:CPF|RG|documento de identidade)\b\s*[:#-]?\s*\d/i.test(query)||/^\d{11}$/.test(normalized)||/^\d{7,12}$/.test(normalized)){showWarn('A pesquisa por CPF/RG ou números de documentos para reunir dados pessoais não está habilitada. Use canais oficiais autorizados para verificações legalmente permitidas.');return;}
-    status.textContent='Agente analisando o texto e consultando fontes públicas indexadas…';$('osint-search-main').disabled=true;
+    status.textContent='Analisando pistas visuais não biométricas e consultando fontes públicas…';$('osint-search-main').disabled=true;
     try{
+      if(fileInput.files[0] && fileInput.files[0].type.startsWith('image/')){
+        status.textContent='Analisando contexto visual da foto…';
+        const imageData=await new Promise((resolve,reject)=>{const img=new Image();const url=URL.createObjectURL(fileInput.files[0]);img.onload=()=>{try{const scale=Math.min(1,1400/Math.max(img.naturalWidth,img.naturalHeight));const canvas=document.createElement('canvas');canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',0.78));}catch(e){reject(e)}finally{URL.revokeObjectURL(url)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Não foi possível preparar a foto para análise visual.'))};img.src=url;});
+        const vr=await fetch('/api/osint-vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imageData})});
+        const vd=await vr.json().catch(()=>({}));if(!vr.ok)throw new Error(vd.error||'A análise visual não está configurada.');visualAnalysis=vd;
+      }
+      query=[context,ocr,visualAnalysis?.analysis?.descricao_cena||'',...(visualAnalysis?.analysis?.termos_busca||[])].filter(Boolean).join('\n');
       const response=await fetch('/api/osint-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:query.slice(0,6000),ocrText:ocr.slice(0,3000),category:$('osint-category').value,fileName:(fileInput.files[0]||{}).name||''})});
       const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||'A API de pesquisa não está configurada. Configure SERPAPI_KEY no Vercel e publique a função /api/osint-search.');
-      lastResults=data; const results=Array.isArray(data.results)?data.results:[];
+      lastResults={...data,visualAnalysis:visualAnalysis?.analysis||null}; const results=Array.isArray(data.results)?data.results:[];
       status.textContent=`Consulta concluída · ${results.length} resultado(s) · ${new Date().toLocaleString('pt-BR')}`;
       const analysis=document.createElement('section');analysis.style.cssText='border:1px solid #d8dee8;border-radius:10px;padding:14px;margin:12px 0;background:#f8fafc';
       const at=document.createElement('h4');at.textContent='Resumo da análise textual';at.style.margin='0 0 8px';analysis.appendChild(at);
       const summary=document.createElement('p');summary.textContent=data.analysisSummary||'A análise priorizou termos do texto extraído. Confira os resultados manualmente.';summary.style.cssText='font-size:13px;color:#475569;margin:4px 0 10px';analysis.appendChild(summary);
+      if(visualAnalysis?.analysis){const va=visualAnalysis.analysis;const vt=document.createElement('strong');vt.textContent='Leitura visual da cena (não identifica a pessoa)';vt.style.cssText='display:block;font-size:12px;margin-top:10px';analysis.appendChild(vt);const vp=document.createElement('p');vp.textContent=va.descricao_cena||'Sem descrição de cena.';vp.style.cssText='font-size:13px;color:#475569;margin:5px 0';analysis.appendChild(vp);const clues=[...(va.texto_visivel?[`Texto visível: ${va.texto_visivel}`]:[]),...(va.pistas_visuais||[]).map(x=>`Pista: ${x}`),...(va.termos_busca?.length?[`Termos usados na busca: ${va.termos_busca.join(', ')}`]:[])];if(clues.length){const ul=document.createElement('ul');ul.style.cssText='margin:5px 0;padding-left:20px';clues.forEach(t=>{const li=document.createElement('li');li.textContent=t;li.style.cssText='font-size:12px;color:#475569;margin:3px 0';ul.appendChild(li)});analysis.appendChild(ul);}}
       if(data.ocrText){const ocrTitle=document.createElement('strong');ocrTitle.textContent='Texto extraído da foto (OCR)';ocrTitle.style.cssText='display:block;font-size:12px;margin-top:8px';analysis.appendChild(ocrTitle);const ocrBox=document.createElement('p');ocrBox.textContent=data.ocrText;ocrBox.style.cssText='white-space:pre-wrap;font-size:12px;color:#475569;margin:5px 0;max-height:120px;overflow:auto';analysis.appendChild(ocrBox);}
       const cand=Array.isArray(data.nameCandidates)?data.nameCandidates:[];const candTitle=document.createElement('strong');candTitle.textContent='Possíveis nomes/trechos identificados no texto';candTitle.style.cssText='display:block;font-size:12px;margin-top:10px';analysis.appendChild(candTitle);
       if(cand.length){
@@ -4181,7 +4189,7 @@ function renderAreaOSINT(areaId, acesso){
     finally{$('osint-search-main').disabled=false;}
   });
   exportBtn.addEventListener('click',()=>{if(!lastResults)return;const blob=new Blob([JSON.stringify(lastResults,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='osint-resultados-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);});
-  $('osint-clear-main').addEventListener('click',()=>{$('osint-query').value='';$('osint-category').value='geral';fileInput.value='';preview.innerHTML='';extractedText='';lastResults=null;meta.textContent='Nenhum arquivo selecionado.';status.textContent='';warn.style.display='none';out.innerHTML='';exportBtn.disabled=true;});
+  $('osint-clear-main').addEventListener('click',()=>{$('osint-query').value='';$('osint-category').value='geral';fileInput.value='';preview.innerHTML='';extractedText='';visualAnalysis=null;lastResults=null;meta.textContent='Nenhum arquivo selecionado.';status.textContent='';warn.style.display='none';out.innerHTML='';exportBtn.disabled=true;});
 }
 
 function infFotosMapa(){ const m=new Map(); (INF.fotos||[]).forEach(f=>{ (m.get(f.pessoa_id)||m.set(f.pessoa_id,[]).get(f.pessoa_id)).push(f); }); m.forEach(a=>a.sort((x,y)=>(y.principal?1:0)-(x.principal?1:0)||x.id-y.id)); INF.fotoMap=m; }

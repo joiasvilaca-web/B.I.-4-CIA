@@ -25,3 +25,9 @@ Notas e limitações:
 - A pesquisa consulta resultados públicos indexados pelo provedor, não toda a internet.
 - A busca usa SerpApi/Google organic results. Não é busca reversa de imagem.
 - Antes de uso operacional, proteja o endpoint com autenticação/autorização, limites de requisição, tratamento de logs e política de retenção adequados.
+
+ANÁLISE VISUAL CONTEXTUAL (atualização)
+- Configure também a variável de ambiente OPENAI_API_KEY no projeto Vercel para ativar a leitura visual da cena.
+- A função /api/osint-vision descreve texto visível, cenário, objetos e pistas contextuais não biométricas e gera termos de busca.
+- A função não identifica pessoas, não compara rostos e não confirma identidade. A busca web continua dependente de SERPAPI_KEY.
+- Depois de adicionar/atualizar os arquivos, faça novo deploy na Vercel.
