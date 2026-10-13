@@ -4124,169 +4124,69 @@ function infConjuntoPessoa(pid,prof){ const set=infBFS(+pid,+prof||1); const ids
 function renderAreaOSINT(areaId, acesso){
   const box = document.getElementById('area-corpo');
   box.innerHTML = `
-    <div class="painel-box" style="margin-bottom:14px">
-      <h3>🔎 Fontes OSINT — análise e documentação</h3>
-      <p style="color:#687386;font-size:13px;line-height:1.6;margin-bottom:14px">
-        Organize links de fontes públicas obtidos em pesquisas autorizadas. Registre a origem, data de consulta, estado da revisão e observações. A ferramenta não confirma identidade, autoria ou veracidade e não acessa contas privadas.
-      </p>
-      <div class="linha-campos">
-        <div><label for="osint-caso">Referência da análise</label><input id="osint-caso" placeholder="Ex.: OSINT-2026-001"></div>
-        <div><label for="osint-analista">Analista / responsável</label><input id="osint-analista" placeholder="Identificação funcional, se aplicável"></div>
-        <div><label for="osint-data">Data da análise</label><input id="osint-data" type="date"></div>
-        <div><label for="osint-finalidade">Finalidade autorizada</label><select id="osint-finalidade"><option value="">Selecione…</option><option>Verificação de fonte pública</option><option>Documentação de ocorrência</option><option>Preservação de evidências públicas</option><option>Outra finalidade autorizada</option></select></div>
-      </div>
-      <label for="osint-contexto">Contexto e escopo (não inclua dados pessoais desnecessários)</label>
-      <textarea id="osint-contexto" rows="3" placeholder="Descreva brevemente a pergunta de análise, o escopo e as limitações."></textarea>
-    </div>
-    <div class="painel-box" style="margin-bottom:14px" id="osint-imagem-box">
-      <h3>🖼️ Pesquisa de imagem e contexto público</h3>
-      <p style="font-size:12px;color:#687386;line-height:1.6">Selecione uma imagem para visualizá-la localmente e abrir ferramentas de pesquisa reversa. Por segurança, esta versão não identifica pessoas pela face nem envia a imagem automaticamente a terceiros: confira a política do serviço antes de fazer upload nele.</p>
-      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-        <div style="min-width:240px;flex:1">
-          <label for="osint-img-file">Imagem para análise (JPG, PNG ou WebP; até 10 MB)</label>
-          <input id="osint-img-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:block;margin:8px 0;width:100%">
-          <div id="osint-img-meta" style="font-size:12px;color:#687386;margin:8px 0">Nenhuma imagem selecionada. A prévia permanece neste navegador.</div>
-          <label for="osint-img-context">Elementos não biométricos para pesquisar</label>
-          <textarea id="osint-img-context" rows="3" placeholder="Ex.: texto visível, logotipo, uniforme, placa institucional, evento ou local público. Não informe dados pessoais desnecessários."></textarea>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-            <button class="btn" id="osint-img-search" type="button" disabled>Abrir pesquisa reversa</button>
-            <button class="btn secundario" id="osint-img-clear" type="button">Remover imagem</button>
-          </div>
+    <div class="painel-box" style="max-width:1100px;margin:0 auto">
+      <h3 style="font-size:20px">🔎 Busca OSINT</h3>
+      <p style="font-size:13px;color:#687386;line-height:1.6">Informe termos de pesquisa e/ou anexe um arquivo para consulta local. A busca gera links para fontes públicas; os resultados externos não são automaticamente verificados pelo BI. Não insira CPF, RG, senhas, dados sigilosos ou documentos de terceiros para tentar descobrir dados pessoais.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:16px">
+        <div>
+          <label for="osint-query">Nome ou termos de pesquisa</label>
+          <input id="osint-query" type="text" maxlength="180" placeholder="Ex.: nome público, empresa, ocorrência publicada" autocomplete="off">
         </div>
-        <div style="width:220px;max-width:100%;min-height:140px;display:flex;align-items:center;justify-content:center;border:1px dashed #c9c4b5;border-radius:10px;padding:8px;background:#faf9f5">
-          <img id="osint-img-preview" alt="Prévia local da imagem selecionada" style="display:none;max-width:100%;max-height:260px;object-fit:contain;border-radius:6px">
-          <span id="osint-img-placeholder" style="font-size:12px;color:#888;text-align:center">Prévia da imagem aparecerá aqui</span>
+        <div>
+          <label for="osint-file">Adicionar foto ou arquivo (opcional)</label>
+          <input id="osint-file" type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.odt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff">
+          <div id="osint-file-meta" style="font-size:12px;color:#687386;margin-top:6px">O arquivo permanece local; não será enviado automaticamente a serviços externos.</div>
         </div>
       </div>
-      <div id="osint-img-links" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #e4e0d5">
-        <p style="font-size:12px;color:#687386">Escolha uma ferramenta. O serviço pode exigir que você selecione novamente o arquivo. Registre abaixo os links públicos encontrados e confirme cada resultado por fontes independentes.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a class="btn secundario" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer">Google Lens ↗</a>
-          <a class="btn secundario" href="https://yandex.com/images/" target="_blank" rel="noopener noreferrer">Yandex Images ↗</a>
-          <a class="btn secundario" href="https://www.bing.com/visualsearch" target="_blank" rel="noopener noreferrer">Bing Visual Search ↗</a>
-        </div>
-        <p style="font-size:11px;color:#8a8368;margin-top:10px">Este painel local não realiza correspondência biométrica, não determina identidade e não comprova que duas imagens retratam a mesma pessoa.</p>
+      <div id="osint-file-preview" style="margin-top:10px"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <button class="btn" id="osint-search-main" type="button">🔎 BUSCAR</button>
+        <button class="btn secundario" id="osint-clear-main" type="button">Limpar</button>
       </div>
-    </div>
-    <div class="painel-box" style="margin-bottom:14px">
-      <h3>🌐 Atalhos para pesquisa manual</h3>
-      <p style="font-size:12px;color:#687386">Os atalhos abrem os serviços em outra aba. Faça a pesquisa diretamente no serviço e registre aqui apenas URLs e informações públicas pertinentes. Nenhuma imagem é enviada automaticamente.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn secundario" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Google Lens ↗</a>
-        <a class="btn secundario" href="https://yandex.com/images/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Yandex Images ↗</a>
-        <a class="btn secundario" href="https://www.bing.com/visualsearch" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Bing Visual Search ↗</a>
-        <a class="btn secundario" href="https://www.google.com/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Google ↗</a>
-      </div>
-    </div>
-    <div class="painel-box">
-      <h3>📋 Cadastro e revisão de fontes</h3>
-      <label for="osint-urls">URLs públicas (uma por linha)</label>
-      <textarea id="osint-urls" rows="5" placeholder="https://www.instagram.com/...&#10;https://www.facebook.com/...&#10;https://www.tiktok.com/@...&#10;https://t.me/..."></textarea>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <button class="btn" id="osint-processar">Classificar links</button>
-        <button class="btn secundario" id="osint-limpar">Limpar resultados</button>
-        <button class="btn secundario" id="osint-exportar" disabled>Exportar CSV</button>
-        <button class="btn secundario" id="osint-json" disabled>Exportar JSON</button>
-      </div>
-      <div id="osint-resumo" style="margin-top:14px"></div>
-      <div id="osint-tabela" style="margin-top:12px"></div>
-      <div style="margin-top:14px">
-        <label for="osint-conclusao">Síntese / conclusão do analista</label>
-        <textarea id="osint-conclusao" rows="4" placeholder="Registre somente conclusões sustentadas pelas fontes e indique o que permanece sem confirmação."></textarea>
-      </div>
-      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:12px">Privacidade: os dados desta tela ficam na memória da página até você exportar ou limpar. Não use este formulário para inserir credenciais, dados sigilosos ou dados pessoais excessivos. O CSV/JSON baixado deve ser armazenado conforme as regras da instituição.</p>
+      <div id="osint-main-warning" style="display:none;margin-top:14px;padding:12px;border-radius:8px;background:#fff7e6;border:1px solid #e6c56d;color:#6f5310"></div>
+      <div id="osint-main-results" style="margin-top:18px"></div>
+      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:16px">Privacidade: o botão BUSCAR não transmite o arquivo. A consulta abre páginas de pesquisa pública com os termos digitados. Para pesquisar uma imagem, abra um serviço visual e faça o envio manualmente, respeitando autorização, privacidade e regras aplicáveis. Correspondências não comprovam identidade.</p>
     </div>`;
-
-  let rows = [];
   const $ = id => document.getElementById(id);
-  $('osint-data').value = new Date().toISOString().slice(0,10);
-  let osintImgUrl = null;
-  const imgInput = $('osint-img-file'), imgPreview = $('osint-img-preview'), imgPlaceholder = $('osint-img-placeholder');
-  const imgMeta = $('osint-img-meta'), imgSearch = $('osint-img-search'), imgLinks = $('osint-img-links');
-  imgInput.addEventListener('change', () => {
-    const f = imgInput.files && imgInput.files[0];
-    if (osintImgUrl) { URL.revokeObjectURL(osintImgUrl); osintImgUrl = null; }
-    imgPreview.removeAttribute('src'); imgPreview.style.display='none'; imgPlaceholder.style.display='block';
-    imgSearch.disabled=true; imgLinks.style.display='none';
-    if (!f) { imgMeta.textContent='Nenhuma imagem selecionada. A prévia permanece neste navegador.'; return; }
-    const allowed=['image/jpeg','image/png','image/webp'];
-    if (!allowed.includes(f.type)) { imgMeta.textContent='Formato não permitido. Selecione JPG, PNG ou WebP.'; imgInput.value=''; return; }
-    if (f.size > 10*1024*1024) { imgMeta.textContent='Arquivo acima de 10 MB. Selecione uma imagem menor.'; imgInput.value=''; return; }
-    osintImgUrl=URL.createObjectURL(f); imgPreview.src=osintImgUrl; imgPreview.style.display='block'; imgPlaceholder.style.display='none';
-    imgPreview.onload=()=>{ imgMeta.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB · ${imgPreview.naturalWidth} × ${imgPreview.naturalHeight} px · prévia local`; };
-    imgSearch.disabled=false;
+  const fileInput=$('osint-file'), meta=$('osint-file-meta'), preview=$('osint-file-preview');
+  let previewUrl=null;
+  fileInput.addEventListener('change',()=>{
+    if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
+    preview.innerHTML=''; const f=fileInput.files&&fileInput.files[0];
+    if(!f){meta.textContent='O arquivo permanece local; não será enviado automaticamente a serviços externos.';return;}
+    if(f.size>15*1024*1024){fileInput.value='';meta.textContent='Arquivo acima do limite de 15 MB.';return;}
+    meta.textContent=`Arquivo selecionado: ${f.name} (${(f.size/1024/1024).toFixed(2)} MB). Permanece neste navegador.`;
+    if(f.type.startsWith('image/')){previewUrl=URL.createObjectURL(f);const img=document.createElement('img');img.src=previewUrl;img.alt='Prévia local';img.style.cssText='max-width:220px;max-height:220px;object-fit:contain;border:1px solid #ddd;border-radius:8px;padding:4px';preview.appendChild(img);}
+    else {const note=document.createElement('div');note.textContent='Documento anexado para referência local. O conteúdo não é extraído nem enviado.';note.style.cssText='font-size:12px;color:#687386';preview.appendChild(note);}
   });
-  imgSearch.addEventListener('click',()=>{
-    if (!imgInput.files || !imgInput.files[0]) return;
-    imgLinks.style.display='block';
-    const context=$('osint-img-context').value.trim();
-    if (context) { $('osint-contexto').value = ($('osint-contexto').value.trim() ? $('osint-contexto').value.trim()+'\n' : '')+'Elementos visuais/contexto pesquisados: '+context; }
-    imgLinks.scrollIntoView({behavior:'smooth',block:'nearest'});
-  });
-  $('osint-img-clear').addEventListener('click',()=>{
-    imgInput.value=''; if(osintImgUrl) URL.revokeObjectURL(osintImgUrl); osintImgUrl=null; imgPreview.removeAttribute('src'); imgPreview.style.display='none'; imgPlaceholder.style.display='block'; imgMeta.textContent='Imagem removida. A prévia permanece neste navegador.'; imgSearch.disabled=true; imgLinks.style.display='none'; $('osint-img-context').value='';
-  });
-  const classify = raw => {
-    let u;
-    try {
-      u = new URL(raw.trim());
-      if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo');
-    } catch (_) { return { plataforma:'URL inválida', tipo:'Indeterminado', status:'Formato inválido' }; }
-    const host = u.hostname.toLowerCase().replace(/\.$/, '');
-    const belongs = domain => host === domain || host.endsWith('.' + domain);
-    let plataforma = 'Outros', tipo = 'Página ou conteúdo';
-    if (['instagram.com','cdninstagram.com'].some(belongs)) {
-      plataforma='Instagram'; tipo=belongs('cdninstagram.com')?'CDN de mídia':(/^\/(p|reel|reels|stories|tv)\//.test(u.pathname)?'Publicação ou conteúdo':(u.pathname.length>1?'Perfil ou rota':'Página inicial'));
-    } else if (['facebook.com','fb.com','fb.watch','fbcdn.net'].some(belongs)) {
-      plataforma='Facebook'; tipo=belongs('fbcdn.net')?'CDN de mídia':belongs('fb.watch')?'Vídeo':(/^\/(groups|pages|watch|share)\//.test(u.pathname)?'Grupo, página ou conteúdo':(u.pathname.length>1?'Perfil ou rota':'Página inicial'));
-    } else if (belongs('tiktok.com')) {
-      plataforma='TikTok'; tipo=/^\/@[^/]+/.test(u.pathname)?'Rota de perfil':(/^\/(video|embed)\//.test(u.pathname)?'Conteúdo':'Outra rota TikTok');
-    } else if (['t.me','telegram.me'].some(belongs)) {
-      plataforma='Telegram'; tipo=u.pathname.length>1?'Canal, grupo ou rota pública':'Página inicial';
+  $('osint-search-main').addEventListener('click',()=>{
+    const q=$('osint-query').value.trim(), warn=$('osint-main-warning'), out=$('osint-main-results');
+    warn.style.display='none';warn.textContent='';out.innerHTML='';
+    if(!q){warn.textContent='Digite um nome público ou termos de pesquisa. Anexar um arquivo, sozinho, não inicia pesquisa automática.';warn.style.display='block';return;}
+    const normalized=q.replace(/[.\s-]/g,'');
+    const looksLikeCpf=/^\d{11}$/.test(normalized), looksLikeRg=/^\d{7,12}$/.test(normalized)&&/^\d+$/.test(normalized);
+    if(looksLikeCpf||looksLikeRg||/\b(CPF|RG|documento|identidade)\s*[:#-]?\s*\d/i.test(q)){
+      warn.textContent='A pesquisa por identificadores pessoais (CPF/RG) para descobrir dados de uma pessoa não está habilitada. Use fontes oficiais autorizadas para verificações legalmente permitidas.';warn.style.display='block';return;
     }
-    return { plataforma, tipo, status:'Formato plausível' };
-  };
-  const escOS = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const meta = () => ({referencia:$('osint-caso').value.trim(), analista:$('osint-analista').value.trim(), data:$('osint-data').value, finalidade:$('osint-finalidade').value, contexto:$('osint-contexto').value.trim(), sintese:$('osint-conclusao').value.trim()});
-  const render = () => {
-    const summary = {};
-    rows.forEach(r => summary[r.plataforma] = (summary[r.plataforma] || 0) + 1);
-    $('osint-resumo').innerHTML = `<div class="cards-resumo"><div class="card-resumo"><div class="num">${rows.length}</div><div class="lbl">URLs únicas</div></div>${Object.entries(summary).map(([k,v])=>`<div class="card-resumo"><div class="num">${v}</div><div class="lbl">${escOS(k)}</div></div>`).join('')}</div>`;
-    $('osint-tabela').innerHTML = rows.length ? `<div style="overflow:auto"><table><thead><tr><th>Plataforma</th><th>Tipo</th><th>URL</th><th>Revisão</th><th>Data consultada</th><th>Observações</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${escOS(r.plataforma)}</td><td>${escOS(r.tipo)}</td><td><a href="${escOS(r.url)}" target="_blank" rel="noopener noreferrer">Abrir link ↗</a><div style="font-size:11px;color:#777">${escOS(r.status)}</div></td><td><select data-os-review="${i}">${['Pendente','Revisado','Não confirmado','Descartado'].map(x=>`<option ${r.revisao===x?'selected':''}>${x}</option>`).join('')}</select></td><td><input type="date" data-os-date="${i}" value="${escOS(r.data_consulta)}"></td><td><input data-os-note="${i}" value="${escOS(r.observacoes)}" placeholder="Fonte, contexto, ressalvas" style="min-width:190px"></td></tr>`).join('')}</tbody></table></div>` : '<p style="color:#888">Nenhum resultado processado.</p>';
-    $('osint-exportar').disabled = !rows.length; $('osint-json').disabled = !rows.length;
-    document.querySelectorAll('[data-os-review]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osReview].revisao=e.target.value));
-    document.querySelectorAll('[data-os-date]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osDate].data_consulta=e.target.value));
-    document.querySelectorAll('[data-os-note]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osNote].observacoes=e.target.value));
-  };
-  const download = (name, content, type) => { const blob=new Blob([content],{type}); const a=document.createElement('a'); const href=URL.createObjectURL(blob); a.href=href; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(href),1000); };
-  $('osint-processar').addEventListener('click',()=>{
-    const input=$('osint-urls').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); const seen=new Set();
-    rows=input.filter(url=>{const key=url.toLowerCase();if(seen.has(key))return false;seen.add(key);return true;}).map(url=>({url,...classify(url),revisao:'Pendente',data_consulta:'',observacoes:''})); render();
+    const enc=encodeURIComponent(q);
+    const links=[
+      ['Google — páginas públicas',`https://www.google.com/search?q=${enc}`],
+      ['Bing — páginas públicas',`https://www.bing.com/search?q=${enc}`],
+      ['DuckDuckGo — páginas públicas',`https://duckduckgo.com/?q=${enc}`],
+      ['Google Lens — pesquisa visual (envio manual)', 'https://lens.google.com/'],
+      ['Bing Visual Search — pesquisa visual (envio manual)', 'https://www.bing.com/visualsearch']
+    ];
+    const title=document.createElement('h4');title.textContent='Links de pesquisa';out.appendChild(title);
+    const intro=document.createElement('p');intro.textContent='As páginas abaixo pesquisam os termos digitados. Para preservar a privacidade, a imagem ou o documento anexado não foi transmitido.';intro.style.cssText='font-size:12px;color:#687386';out.appendChild(intro);
+    const list=document.createElement('div');list.style.cssText='display:grid;gap:8px';
+    links.forEach(([label,url])=>{const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='↗ '+label;a.style.cssText='display:block;padding:12px;border:1px solid #d8dee8;border-radius:8px;text-decoration:none;color:#23466b;background:#fff';list.appendChild(a);});
+    out.appendChild(list);
   });
-  $('osint-limpar').addEventListener('click',()=>{rows=[];$('osint-urls').value='';$('osint-resumo').innerHTML='';$('osint-tabela').innerHTML='';$('osint-exportar').disabled=true;$('osint-json').disabled=true;});
-  $('osint-exportar').addEventListener('click',()=>{
-    const cols=['referencia','analista','data_analise','finalidade','contexto','sintese','plataforma','tipo','url','status','revisao','data_consulta','observacoes']; const m=meta();
-    const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"'; const data=rows.map(r=>({...m,data_analise:m.data,...r}));
-    download('relatorio-fontes-osint.csv','\ufeff'+[cols.join(','),...data.map(r=>cols.map(c=>csvCell(r[c])).join(','))].join('\r\n'),'text/csv;charset=utf-8;');
+  $('osint-clear-main').addEventListener('click',()=>{
+    $('osint-query').value='';fileInput.value='';preview.innerHTML='';if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}meta.textContent='O arquivo permanece local; não será enviado automaticamente a serviços externos.';$('osint-main-warning').style.display='none';$('osint-main-results').innerHTML='';
   });
-  $('osint-json').addEventListener('click',()=>download('relatorio-fontes-osint.json',JSON.stringify({metadados:meta(),fontes:rows,exportado_em:new Date().toISOString()},null,2),'application/json;charset=utf-8;'));
 }
 
-async function renderAreaInfratores(areaId, acesso){
-  infInjetarCss();
-  const box=document.getElementById('area-corpo');
-  box.innerHTML='<div class="carregando">Carregando cadastro…</div>';
-  try{ await infCarregar(); }catch(e){ box.innerHTML=`<p style="color:#a4202a">${esc(e.message)}</p>`; return; }
-  infRender();
-  // lista de bairros ja usada na Carta de Situacao (opcional; exige P3)
-  try{ const l=await apiCarta('cartaListas'); INF.bairrosCarta=(l.listas.bairro||[]).map(r=>r.valor); }catch(e){}
-}
-async function infCarregar(){
-  const d=await apiInf('infCarregar');
-  INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.ddus=d.ddus||[]; INF.ddupes=d.ddu_pessoas||[]; INF.gov=d.gov||[]; INF.alvos=d.alvos||[]; INF.config=d.config||{};
-  INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos); INF.alvoCfg=(INF.config.alvo&&Array.isArray(INF.config.alvo.regras))?{sensorPeso:+INF.config.alvo.sensorPeso>=0?+INF.config.alvo.sensorPeso:5,regras:INF.config.alvo.regras}:JSON.parse(JSON.stringify(INF_DEF.alvo));
-  await infFotosRecarregar(true); infRecalc(); INF.ok=true;
-}
 function infFotosMapa(){ const m=new Map(); (INF.fotos||[]).forEach(f=>{ (m.get(f.pessoa_id)||m.set(f.pessoa_id,[]).get(f.pessoa_id)).push(f); }); m.forEach(a=>a.sort((x,y)=>(y.principal?1:0)-(x.principal?1:0)||x.id-y.id)); INF.fotoMap=m; }
 async function infFotosRecarregar(silencioso){ try{ const d=await apiFoto('fotosLista'); INF.fotos=d.fotos||[]; }catch(e){ if(!INF.fotos) INF.fotos=[]; if(!silencioso) infToast(e.message,true); } infFotosMapa(); }
 function infFotosDe(id){ return (INF.fotoMap&&INF.fotoMap.get(id))||[]; }
