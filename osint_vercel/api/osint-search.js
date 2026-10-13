@@ -69,9 +69,14 @@ export default async function handler(req, res) {
     if (category === 'documentos') queries.push({ label: 'Fontes oficiais públicas', q: `${base} (site:gov.br OR site:jus.br)` .slice(0,450) });
     else if (category === 'veiculos') queries.push({ label: 'Veículos e objetos', q: `${base} (marca OR modelo OR manual OR fabricante)` .slice(0,450) });
     else if (category === 'locais') queries.push({ label: 'Locais e estabelecimentos', q: `${base} (estabelecimento OR endereço OR local)` .slice(0,450) });
-    else if (category === 'pessoas_contexto') queries.push({ label: 'Páginas públicas e contexto', q: `${base} (notícia OR evento OR organização)` .slice(0,450) });
+    else if (category === 'pessoas_contexto') {
+      queries.push({ label: 'Páginas públicas e contexto', q: `${base} (notícia OR evento OR organização)` .slice(0,450) });
+      // Pesquisa apenas por texto/contexto fornecido ou extraído por OCR; não compara rostos.
+      queries.push({ label: 'Perfis públicos indexados — LinkedIn', q: `${base} site:linkedin.com/in` .slice(0,450) });
+      queries.push({ label: 'Páginas públicas indexadas — Instagram/Facebook', q: `${base} (site:instagram.com OR site:facebook.com)` .slice(0,450) });
+    }
     else queries.push({ label: 'Notícias e fontes oficiais', q: `${base} (notícia OR comunicado OR site:gov.br)` .slice(0,450) });
-    const usableQueries = queries.filter(x=>x.q.trim()).slice(0,3);
+    const usableQueries = queries.filter(x=>x.q.trim()).slice(0,4);
     if (!usableQueries.length) return res.status(400).json({ error: 'O texto extraído contém poucos termos úteis. Tente uma foto mais nítida ou acrescente contexto.' });
 
     const all = [];
