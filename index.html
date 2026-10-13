@@ -4138,6 +4138,36 @@ function renderAreaOSINT(areaId, acesso){
       <label for="osint-contexto">Contexto e escopo (não inclua dados pessoais desnecessários)</label>
       <textarea id="osint-contexto" rows="3" placeholder="Descreva brevemente a pergunta de análise, o escopo e as limitações."></textarea>
     </div>
+    <div class="painel-box" style="margin-bottom:14px" id="osint-imagem-box">
+      <h3>🖼️ Pesquisa de imagem e contexto público</h3>
+      <p style="font-size:12px;color:#687386;line-height:1.6">Selecione uma imagem para visualizá-la localmente e abrir ferramentas de pesquisa reversa. Por segurança, esta versão não identifica pessoas pela face nem envia a imagem automaticamente a terceiros: confira a política do serviço antes de fazer upload nele.</p>
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+        <div style="min-width:240px;flex:1">
+          <label for="osint-img-file">Imagem para análise (JPG, PNG ou WebP; até 10 MB)</label>
+          <input id="osint-img-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:block;margin:8px 0;width:100%">
+          <div id="osint-img-meta" style="font-size:12px;color:#687386;margin:8px 0">Nenhuma imagem selecionada. A prévia permanece neste navegador.</div>
+          <label for="osint-img-context">Elementos não biométricos para pesquisar</label>
+          <textarea id="osint-img-context" rows="3" placeholder="Ex.: texto visível, logotipo, uniforme, placa institucional, evento ou local público. Não informe dados pessoais desnecessários."></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn" id="osint-img-search" type="button" disabled>Abrir pesquisa reversa</button>
+            <button class="btn secundario" id="osint-img-clear" type="button">Remover imagem</button>
+          </div>
+        </div>
+        <div style="width:220px;max-width:100%;min-height:140px;display:flex;align-items:center;justify-content:center;border:1px dashed #c9c4b5;border-radius:10px;padding:8px;background:#faf9f5">
+          <img id="osint-img-preview" alt="Prévia local da imagem selecionada" style="display:none;max-width:100%;max-height:260px;object-fit:contain;border-radius:6px">
+          <span id="osint-img-placeholder" style="font-size:12px;color:#888;text-align:center">Prévia da imagem aparecerá aqui</span>
+        </div>
+      </div>
+      <div id="osint-img-links" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #e4e0d5">
+        <p style="font-size:12px;color:#687386">Escolha uma ferramenta. O serviço pode exigir que você selecione novamente o arquivo. Registre abaixo os links públicos encontrados e confirme cada resultado por fontes independentes.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a class="btn secundario" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer">Google Lens ↗</a>
+          <a class="btn secundario" href="https://yandex.com/images/" target="_blank" rel="noopener noreferrer">Yandex Images ↗</a>
+          <a class="btn secundario" href="https://www.bing.com/visualsearch" target="_blank" rel="noopener noreferrer">Bing Visual Search ↗</a>
+        </div>
+        <p style="font-size:11px;color:#8a8368;margin-top:10px">Este painel local não realiza correspondência biométrica, não determina identidade e não comprova que duas imagens retratam a mesma pessoa.</p>
+      </div>
+    </div>
     <div class="painel-box" style="margin-bottom:14px">
       <h3>🌐 Atalhos para pesquisa manual</h3>
       <p style="font-size:12px;color:#687386">Os atalhos abrem os serviços em outra aba. Faça a pesquisa diretamente no serviço e registre aqui apenas URLs e informações públicas pertinentes. Nenhuma imagem é enviada automaticamente.</p>
@@ -4170,6 +4200,32 @@ function renderAreaOSINT(areaId, acesso){
   let rows = [];
   const $ = id => document.getElementById(id);
   $('osint-data').value = new Date().toISOString().slice(0,10);
+  let osintImgUrl = null;
+  const imgInput = $('osint-img-file'), imgPreview = $('osint-img-preview'), imgPlaceholder = $('osint-img-placeholder');
+  const imgMeta = $('osint-img-meta'), imgSearch = $('osint-img-search'), imgLinks = $('osint-img-links');
+  imgInput.addEventListener('change', () => {
+    const f = imgInput.files && imgInput.files[0];
+    if (osintImgUrl) { URL.revokeObjectURL(osintImgUrl); osintImgUrl = null; }
+    imgPreview.removeAttribute('src'); imgPreview.style.display='none'; imgPlaceholder.style.display='block';
+    imgSearch.disabled=true; imgLinks.style.display='none';
+    if (!f) { imgMeta.textContent='Nenhuma imagem selecionada. A prévia permanece neste navegador.'; return; }
+    const allowed=['image/jpeg','image/png','image/webp'];
+    if (!allowed.includes(f.type)) { imgMeta.textContent='Formato não permitido. Selecione JPG, PNG ou WebP.'; imgInput.value=''; return; }
+    if (f.size > 10*1024*1024) { imgMeta.textContent='Arquivo acima de 10 MB. Selecione uma imagem menor.'; imgInput.value=''; return; }
+    osintImgUrl=URL.createObjectURL(f); imgPreview.src=osintImgUrl; imgPreview.style.display='block'; imgPlaceholder.style.display='none';
+    imgPreview.onload=()=>{ imgMeta.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB · ${imgPreview.naturalWidth} × ${imgPreview.naturalHeight} px · prévia local`; };
+    imgSearch.disabled=false;
+  });
+  imgSearch.addEventListener('click',()=>{
+    if (!imgInput.files || !imgInput.files[0]) return;
+    imgLinks.style.display='block';
+    const context=$('osint-img-context').value.trim();
+    if (context) { $('osint-contexto').value = ($('osint-contexto').value.trim() ? $('osint-contexto').value.trim()+'\n' : '')+'Elementos visuais/contexto pesquisados: '+context; }
+    imgLinks.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+  $('osint-img-clear').addEventListener('click',()=>{
+    imgInput.value=''; if(osintImgUrl) URL.revokeObjectURL(osintImgUrl); osintImgUrl=null; imgPreview.removeAttribute('src'); imgPreview.style.display='none'; imgPlaceholder.style.display='block'; imgMeta.textContent='Imagem removida. A prévia permanece neste navegador.'; imgSearch.disabled=true; imgLinks.style.display='none'; $('osint-img-context').value='';
+  });
   const classify = raw => {
     let u;
     try {
