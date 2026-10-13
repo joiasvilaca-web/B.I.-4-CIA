@@ -4119,127 +4119,101 @@ function infConjuntoPessoa(pid,prof){ const set=infBFS(+pid,+prof||1); const ids
 // ---------- entrada ----------
 
 // ---------- ABA FONTES OSINT (P2) ----------
-// Organiza URLs fornecidas pelo operador. Não identifica pessoas por face
-// nem automatiza enumeração/rastreamento de contas pessoais.
+// Triagem manual de fontes públicas e documentação. Não faz reconhecimento facial,
+// enumeração automática de usernames, scraping nem correlação automática de identidade.
 function renderAreaOSINT(areaId, acesso){
   const box = document.getElementById('area-corpo');
   box.innerHTML = `
-    <div class="painel-box">
-      <h3>🔎 Triagem de fontes públicas</h3>
-      <p style="color:#687386;font-size:13px;line-height:1.5">
-        Cole links obtidos em pesquisas autorizadas, um por linha. O painel classifica
-        o domínio e permite registrar a revisão manual. A classificação não confirma
-        autoria, identidade, disponibilidade ou veracidade do conteúdo.
+    <div class="painel-box" style="margin-bottom:14px">
+      <h3>🔎 Fontes OSINT — análise e documentação</h3>
+      <p style="color:#687386;font-size:13px;line-height:1.6;margin-bottom:14px">
+        Organize links de fontes públicas obtidos em pesquisas autorizadas. Registre a origem, data de consulta, estado da revisão e observações. A ferramenta não confirma identidade, autoria ou veracidade e não acessa contas privadas.
       </p>
-      <label for="osint-urls">URLs</label>
-      <textarea id="osint-urls" rows="6" style="width:100%;box-sizing:border-box"
-        placeholder="https://www.instagram.com/...&#10;https://www.facebook.com/..."></textarea>
+      <div class="linha-campos">
+        <div><label for="osint-caso">Referência da análise</label><input id="osint-caso" placeholder="Ex.: OSINT-2026-001"></div>
+        <div><label for="osint-analista">Analista / responsável</label><input id="osint-analista" placeholder="Identificação funcional, se aplicável"></div>
+        <div><label for="osint-data">Data da análise</label><input id="osint-data" type="date"></div>
+        <div><label for="osint-finalidade">Finalidade autorizada</label><select id="osint-finalidade"><option value="">Selecione…</option><option>Verificação de fonte pública</option><option>Documentação de ocorrência</option><option>Preservação de evidências públicas</option><option>Outra finalidade autorizada</option></select></div>
+      </div>
+      <label for="osint-contexto">Contexto e escopo (não inclua dados pessoais desnecessários)</label>
+      <textarea id="osint-contexto" rows="3" placeholder="Descreva brevemente a pergunta de análise, o escopo e as limitações."></textarea>
+    </div>
+    <div class="painel-box" style="margin-bottom:14px">
+      <h3>🌐 Atalhos para pesquisa manual</h3>
+      <p style="font-size:12px;color:#687386">Os atalhos abrem os serviços em outra aba. Faça a pesquisa diretamente no serviço e registre aqui apenas URLs e informações públicas pertinentes. Nenhuma imagem é enviada automaticamente.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn secundario" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Google Lens ↗</a>
+        <a class="btn secundario" href="https://yandex.com/images/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Yandex Images ↗</a>
+        <a class="btn secundario" href="https://www.bing.com/visualsearch" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Bing Visual Search ↗</a>
+        <a class="btn secundario" href="https://www.google.com/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Google ↗</a>
+      </div>
+    </div>
+    <div class="painel-box">
+      <h3>📋 Cadastro e revisão de fontes</h3>
+      <label for="osint-urls">URLs públicas (uma por linha)</label>
+      <textarea id="osint-urls" rows="5" placeholder="https://www.instagram.com/...&#10;https://www.facebook.com/...&#10;https://www.tiktok.com/@...&#10;https://t.me/..."></textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn" id="osint-processar">Classificar links</button>
-        <button class="btn secundario" id="osint-limpar">Limpar</button>
+        <button class="btn secundario" id="osint-limpar">Limpar resultados</button>
+        <button class="btn secundario" id="osint-exportar" disabled>Exportar CSV</button>
+        <button class="btn secundario" id="osint-json" disabled>Exportar JSON</button>
       </div>
       <div id="osint-resumo" style="margin-top:14px"></div>
       <div id="osint-tabela" style="margin-top:12px"></div>
-      <div style="margin-top:12px">
-        <button class="btn secundario" id="osint-exportar" disabled>Exportar CSV</button>
+      <div style="margin-top:14px">
+        <label for="osint-conclusao">Síntese / conclusão do analista</label>
+        <textarea id="osint-conclusao" rows="4" placeholder="Registre somente conclusões sustentadas pelas fontes e indique o que permanece sem confirmação."></textarea>
       </div>
-    </div>
-  `;
+      <p style="font-size:11px;color:#8a8368;line-height:1.5;margin-top:12px">Privacidade: os dados desta tela ficam na memória da página até você exportar ou limpar. Não use este formulário para inserir credenciais, dados sigilosos ou dados pessoais excessivos. O CSV/JSON baixado deve ser armazenado conforme as regras da instituição.</p>
+    </div>`;
 
   let rows = [];
+  const $ = id => document.getElementById(id);
+  $('osint-data').value = new Date().toISOString().slice(0,10);
   const classify = raw => {
     let u;
     try {
       u = new URL(raw.trim());
       if (!['http:', 'https:'].includes(u.protocol)) throw new Error('protocolo');
-    } catch (_) {
-      return { plataforma:'URL inválida', tipo:'Indeterminado', status:'Formato inválido' };
-    }
+    } catch (_) { return { plataforma:'URL inválida', tipo:'Indeterminado', status:'Formato inválido' }; }
     const host = u.hostname.toLowerCase().replace(/\.$/, '');
     const belongs = domain => host === domain || host.endsWith('.' + domain);
     let plataforma = 'Outros', tipo = 'Página ou conteúdo';
     if (['instagram.com','cdninstagram.com'].some(belongs)) {
-      plataforma = 'Instagram';
-      tipo = belongs('cdninstagram.com') ? 'CDN de mídia' :
-        (/^\/(p|reel|reels|stories|tv)\//.test(u.pathname) ? 'Publicação ou conteúdo' :
-        (u.pathname.length > 1 ? 'Perfil ou rota' : 'Página inicial'));
+      plataforma='Instagram'; tipo=belongs('cdninstagram.com')?'CDN de mídia':(/^\/(p|reel|reels|stories|tv)\//.test(u.pathname)?'Publicação ou conteúdo':(u.pathname.length>1?'Perfil ou rota':'Página inicial'));
     } else if (['facebook.com','fb.com','fb.watch','fbcdn.net'].some(belongs)) {
-      plataforma = 'Facebook';
-      tipo = (belongs('fbcdn.net')) ? 'CDN de mídia' :
-        (belongs('fb.watch')) ? 'Vídeo' :
-        (/^\/(groups|pages|watch|share)\//.test(u.pathname) ? 'Grupo, página ou conteúdo' :
-        (u.pathname.length > 1 ? 'Perfil ou rota' : 'Página inicial'));
+      plataforma='Facebook'; tipo=belongs('fbcdn.net')?'CDN de mídia':belongs('fb.watch')?'Vídeo':(/^\/(groups|pages|watch|share)\//.test(u.pathname)?'Grupo, página ou conteúdo':(u.pathname.length>1?'Perfil ou rota':'Página inicial'));
     } else if (belongs('tiktok.com')) {
-      plataforma = 'TikTok';
-      tipo = /^\/@[^/]+/.test(u.pathname) ? 'Rota de perfil' :
-        (/^\/(video|embed)\//.test(u.pathname) ? 'Conteúdo' : 'Outra rota TikTok');
+      plataforma='TikTok'; tipo=/^\/@[^/]+/.test(u.pathname)?'Rota de perfil':(/^\/(video|embed)\//.test(u.pathname)?'Conteúdo':'Outra rota TikTok');
     } else if (['t.me','telegram.me'].some(belongs)) {
-      plataforma = 'Telegram';
-      tipo = u.pathname.length > 1 ? 'Canal, grupo ou rota pública' : 'Página inicial';
+      plataforma='Telegram'; tipo=u.pathname.length>1?'Canal, grupo ou rota pública':'Página inicial';
     }
     return { plataforma, tipo, status:'Formato plausível' };
   };
-
-  const escOS = v => String(v ?? '').replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const escOS = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const meta = () => ({referencia:$('osint-caso').value.trim(), analista:$('osint-analista').value.trim(), data:$('osint-data').value, finalidade:$('osint-finalidade').value, contexto:$('osint-contexto').value.trim(), sintese:$('osint-conclusao').value.trim()});
   const render = () => {
     const summary = {};
     rows.forEach(r => summary[r.plataforma] = (summary[r.plataforma] || 0) + 1);
-    document.getElementById('osint-resumo').innerHTML =
-      `<div class="cards-resumo">
-        <div class="card-resumo"><div class="num">${rows.length}</div><div class="lbl">URLs únicas</div></div>
-        ${Object.entries(summary).map(([k,v]) =>
-          `<div class="card-resumo"><div class="num">${v}</div><div class="lbl">${escOS(k)}</div></div>`
-        ).join('')}
-      </div>`;
-    document.getElementById('osint-tabela').innerHTML = rows.length ? `
-      <div style="overflow:auto"><table>
-        <thead><tr><th>Plataforma</th><th>Tipo</th><th>URL</th><th>Revisão</th><th>Observações</th></tr></thead>
-        <tbody>${rows.map((r,i)=>`<tr>
-          <td>${escOS(r.plataforma)}</td><td>${escOS(r.tipo)}</td>
-          <td><a href="${escOS(r.url)}" target="_blank" rel="noopener noreferrer">Abrir link ↗</a></td>
-          <td><select data-os-review="${i}">
-            ${['Pendente','Revisado','Não confirmado','Descartado'].map(x=>`<option ${r.revisao===x?'selected':''}>${x}</option>`).join('')}
-          </select></td>
-          <td><input data-os-note="${i}" value="${escOS(r.observacoes)}" placeholder="Nota de revisão" style="min-width:160px"></td>
-        </tr>`).join('')}</tbody>
-      </table></div>` : '<p style="color:#888">Nenhum resultado processado.</p>';
-    document.getElementById('osint-exportar').disabled = !rows.length;
-    document.querySelectorAll('[data-os-review]').forEach(el => el.addEventListener('change', e => {
-      rows[+e.target.dataset.osReview].revisao = e.target.value;
-    }));
-    document.querySelectorAll('[data-os-note]').forEach(el => el.addEventListener('change', e => {
-      rows[+e.target.dataset.osNote].observacoes = e.target.value;
-    }));
+    $('osint-resumo').innerHTML = `<div class="cards-resumo"><div class="card-resumo"><div class="num">${rows.length}</div><div class="lbl">URLs únicas</div></div>${Object.entries(summary).map(([k,v])=>`<div class="card-resumo"><div class="num">${v}</div><div class="lbl">${escOS(k)}</div></div>`).join('')}</div>`;
+    $('osint-tabela').innerHTML = rows.length ? `<div style="overflow:auto"><table><thead><tr><th>Plataforma</th><th>Tipo</th><th>URL</th><th>Revisão</th><th>Data consultada</th><th>Observações</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${escOS(r.plataforma)}</td><td>${escOS(r.tipo)}</td><td><a href="${escOS(r.url)}" target="_blank" rel="noopener noreferrer">Abrir link ↗</a><div style="font-size:11px;color:#777">${escOS(r.status)}</div></td><td><select data-os-review="${i}">${['Pendente','Revisado','Não confirmado','Descartado'].map(x=>`<option ${r.revisao===x?'selected':''}>${x}</option>`).join('')}</select></td><td><input type="date" data-os-date="${i}" value="${escOS(r.data_consulta)}"></td><td><input data-os-note="${i}" value="${escOS(r.observacoes)}" placeholder="Fonte, contexto, ressalvas" style="min-width:190px"></td></tr>`).join('')}</tbody></table></div>` : '<p style="color:#888">Nenhum resultado processado.</p>';
+    $('osint-exportar').disabled = !rows.length; $('osint-json').disabled = !rows.length;
+    document.querySelectorAll('[data-os-review]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osReview].revisao=e.target.value));
+    document.querySelectorAll('[data-os-date]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osDate].data_consulta=e.target.value));
+    document.querySelectorAll('[data-os-note]').forEach(el=>el.addEventListener('change',e=>rows[+e.target.dataset.osNote].observacoes=e.target.value));
   };
-
-  document.getElementById('osint-processar').addEventListener('click', () => {
-    const input = document.getElementById('osint-urls').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-    const seen = new Set();
-    rows = input.filter(url => {
-      if (seen.has(url)) return false;
-      seen.add(url); return true;
-    }).map(url => ({url, ...classify(url), revisao:'Pendente', observacoes:''}));
-    render();
+  const download = (name, content, type) => { const blob=new Blob([content],{type}); const a=document.createElement('a'); const href=URL.createObjectURL(blob); a.href=href; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(href),1000); };
+  $('osint-processar').addEventListener('click',()=>{
+    const input=$('osint-urls').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); const seen=new Set();
+    rows=input.filter(url=>{const key=url.toLowerCase();if(seen.has(key))return false;seen.add(key);return true;}).map(url=>({url,...classify(url),revisao:'Pendente',data_consulta:'',observacoes:''})); render();
   });
-  document.getElementById('osint-limpar').addEventListener('click', () => {
-    rows = [];
-    document.getElementById('osint-urls').value = '';
-    document.getElementById('osint-resumo').innerHTML = '';
-    document.getElementById('osint-tabela').innerHTML = '';
-    document.getElementById('osint-exportar').disabled = true;
+  $('osint-limpar').addEventListener('click',()=>{rows=[];$('osint-urls').value='';$('osint-resumo').innerHTML='';$('osint-tabela').innerHTML='';$('osint-exportar').disabled=true;$('osint-json').disabled=true;});
+  $('osint-exportar').addEventListener('click',()=>{
+    const cols=['referencia','analista','data_analise','finalidade','contexto','sintese','plataforma','tipo','url','status','revisao','data_consulta','observacoes']; const m=meta();
+    const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"'; const data=rows.map(r=>({...m,data_analise:m.data,...r}));
+    download('relatorio-fontes-osint.csv','\ufeff'+[cols.join(','),...data.map(r=>cols.map(c=>csvCell(r[c])).join(','))].join('\r\n'),'text/csv;charset=utf-8;');
   });
-  document.getElementById('osint-exportar').addEventListener('click', () => {
-    const cols = ['plataforma','tipo','url','status','revisao','observacoes'];
-    const csvCell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const csv = [cols.join(','), ...rows.map(r=>cols.map(c=>csvCell(r[c])).join(','))].join('\r\n');
-    const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'triagem-fontes-osint.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
+  $('osint-json').addEventListener('click',()=>download('relatorio-fontes-osint.json',JSON.stringify({metadados:meta(),fontes:rows,exportado_em:new Date().toISOString()},null,2),'application/json;charset=utf-8;'));
 }
 
 async function renderAreaInfratores(areaId, acesso){
