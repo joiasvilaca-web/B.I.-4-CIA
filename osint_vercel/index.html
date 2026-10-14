@@ -4116,7 +4116,23 @@ function infConjunto(){
 function infConjuntoPessoa(pid,prof){ const set=infBFS(+pid,+prof||1); const ids=new Set(set); ids.add(+pid); const lista=INF.pessoas.filter(p=>ids.has(p.id)); return {lista,ids,vis:ids}; }
 // ---------- entrada ----------
 
-// O módulo Fontes OSINT foi removido a pedido do usuário.
+// Entrada do módulo Infratores (P2)
+async function renderAreaInfratores(areaId, acesso){
+  infInjetarCss();
+  const box=document.getElementById('area-corpo');
+  box.innerHTML='<div class="carregando">Carregando cadastro…</div>';
+  try{ await infCarregar(); }
+  catch(e){ box.innerHTML=`<p style="color:#a4202a">${esc(e.message)}</p>`; return; }
+  infRender();
+  // Lista de bairros já usada na Carta de Situação (opcional).
+  try{ const l=await apiCarta('cartaListas'); INF.bairrosCarta=(l.listas.bairro||[]).map(r=>r.valor); }catch(e){}
+}
+async function infCarregar(){
+  const d=await apiInf('infCarregar');
+  INF.podeEditar=!!d.podeEditar; INF.pessoas=d.pessoas||[]; INF.vinculos=d.vinculos||[]; INF.locais=d.locais||[]; INF.registros=d.registros||[]; INF.ddus=d.ddus||[]; INF.ddupes=d.ddu_pessoas||[]; INF.gov=d.gov||[]; INF.alvos=d.alvos||[]; INF.config=d.config||{};
+  INF.cat=infMesclar(INF_DEF.catalogos, INF.config.catalogos); INF.pesos=infMesclar(INF_DEF.pesos, INF.config.pesos); INF.alvoCfg=(INF.config.alvo&&Array.isArray(INF.config.alvo.regras))?{sensorPeso:+INF.config.alvo.sensorPeso>=0?+INF.config.alvo.sensorPeso:5,regras:INF.config.alvo.regras}:JSON.parse(JSON.stringify(INF_DEF.alvo));
+  await infFotosRecarregar(true); infRecalc(); INF.ok=true;
+}
 function infFotosMapa(){ const m=new Map(); (INF.fotos||[]).forEach(f=>{ (m.get(f.pessoa_id)||m.set(f.pessoa_id,[]).get(f.pessoa_id)).push(f); }); m.forEach(a=>a.sort((x,y)=>(y.principal?1:0)-(x.principal?1:0)||x.id-y.id)); INF.fotoMap=m; }
 async function infFotosRecarregar(silencioso){ try{ const d=await apiFoto('fotosLista'); INF.fotos=d.fotos||[]; }catch(e){ if(!INF.fotos) INF.fotos=[]; if(!silencioso) infToast(e.message,true); } infFotosMapa(); }
 function infFotosDe(id){ return (INF.fotoMap&&INF.fotoMap.get(id))||[]; }
