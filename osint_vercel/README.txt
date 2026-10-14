@@ -1,33 +1,29 @@
-BI 4ª CIA PM Ind GER — Agente de Pesquisa OSINT
+BI 4ª CIA PM Ind GER — Agente OSINT: Localização da Foto
 
-Estrutura esperada na raiz do repositório (Root Directory do Vercel = osint_vercel):
+Estrutura esperada na raiz do repositório (Root Directory da Vercel = osint_vercel):
 - index.html
 - package.json
 - api/osint-search.js
+- api/osint-vision.js
 
-Melhorias desta versão:
-- OCR de fotos no navegador (Tesseract.js, português + inglês).
-- Texto complementar opcional.
-- A API recebe o OCR separadamente, tenta destacar trechos que podem ser nomes escritos na imagem e constrói consultas com termos mais informativos.
-- Deduplicação e ordenação heurística dos resultados por correspondência textual.
-- A interface mostra o OCR extraído, possíveis nomes/trechos, razão da relevância e links de fontes públicas.
-- A API não faz reconhecimento facial, comparação de rostos ou confirmação de identidade.
-- Consultas por CPF/RG ou números de documentos para reunir dados pessoais são bloqueadas.
+Foco desta versão:
+- O módulo OSINT foi simplificado para estimar exclusivamente onde uma fotografia foi tirada.
+- Análise visual por API de visão: arquitetura, fachadas, placas, monumentos, paisagem, sinalização, vegetação, relevo, texto geográfico e outras pistas do cenário.
+- Lista de locais candidatos do mais específico ao mais amplo, com justificativa e confiança estimada quando houver evidência.
+- OCR auxiliar no navegador para extrair placas e letreiros.
+- Pesquisa web de termos geográficos e consultas sugeridas pela análise visual.
+- Exibição de pistas, hipóteses, limitações e páginas públicas para verificação.
+- A interface OSINT não exibe nem pesquisa nomes de pessoas ou atributos pessoais.
 
 Configuração Vercel:
 1. Root Directory: osint_vercel
-2. Environment Variable: SERPAPI_KEY (valor secreto da conta SerpApi), ambiente Production
-3. Fazer commit dos arquivos e aguardar novo deploy Ready.
+2. Environment Variables em Production:
+   - SERPAPI_KEY: chave da conta SerpApi para pesquisar páginas públicas.
+   - OPENAI_API_KEY: chave da API OpenAI para analisar visualmente a foto.
+3. Publique os arquivos e aguarde o deploy ficar Ready.
 
-Notas e limitações:
-- Os nomes sugeridos são candidatos textuais extraídos por heurística do OCR, não identidade da pessoa na foto. Podem ser falsos positivos e precisam de conferência humana.
-- A pontuação de relevância é heurística por sobreposição textual, não uma probabilidade estatística nem garantia de qualidade.
-- A pesquisa consulta resultados públicos indexados pelo provedor, não toda a internet.
-- A busca usa SerpApi/Google organic results. Não é busca reversa de imagem.
-- Antes de uso operacional, proteja o endpoint com autenticação/autorização, limites de requisição, tratamento de logs e política de retenção adequados.
-
-ANÁLISE VISUAL CONTEXTUAL (atualização)
-- Configure também a variável de ambiente OPENAI_API_KEY no projeto Vercel para ativar a leitura visual da cena.
-- A função /api/osint-vision descreve texto visível, cenário, objetos e pistas contextuais não biométricas e gera termos de busca.
-- A função não identifica pessoas, não compara rostos e não confirma identidade. A busca web continua dependente de SERPAPI_KEY.
-- Depois de adicionar/atualizar os arquivos, faça novo deploy na Vercel.
+Limitações:
+- A análise estima o local; não garante a localização exata, especialmente em fotos fechadas, genéricas ou sem referências geográficas.
+- Os resultados de pesquisa são páginas públicas indexadas, não toda a internet nem busca reversa de imagem.
+- A confiança descrita pelo modelo é uma estimativa qualitativa, não uma probabilidade estatística.
+- A imagem é enviada ao endpoint /api/osint-vision para análise pela API de visão configurada. Use somente imagens cujo envio seja autorizado e aplique controles de acesso, limites e política de retenção adequados.
