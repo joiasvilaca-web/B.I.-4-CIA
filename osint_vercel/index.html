@@ -5806,15 +5806,17 @@ function orSave(){try{localStorage.setItem(OR_STORE,JSON.stringify({orgs:OR_STAT
 function orUid(){return 'or'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function orActive(){return OR_STATE.orgs.find(o=>o.id===OR_STATE.active)||null;}
 function orPerson(id){return (INF.pessoas||[]).find(p=>String(p.id)===String(id));}
+// Limpa cards cujo cadastro foi excluído e reconecta os descendentes para evitar conectores vazios.
+function orCleanDeletedPeople(){let changed=false;for(const o of (OR_STATE.orgs||[])){const cards=Array.isArray(o.cards)?o.cards:[];const removed=cards.filter(c=>!orPerson(c.personId));if(!removed.length)continue;const removedIds=new Set(removed.map(c=>c.id));for(const c of cards){if(removedIds.has(c.parent)){const missing=removed.find(x=>x.id===c.parent);c.parent=missing?.parent&&!removedIds.has(missing.parent)?missing.parent:null;changed=true;}}o.cards=cards.filter(c=>!removedIds.has(c.id));if(removedIds.has(OR_STATE.selected)){OR_STATE.selected=null;OR_STATE.detail=null;}changed=true;}if(changed)orSave();return changed;}
 function orEsc(s){return esc(String(s??''));}
 async function renderAreaOrcrin(areaId,acesso){
   const box=document.getElementById('area-corpo');box.innerHTML='<div class="carregando">Carregando cadastro de infratores…</div>';
   try{await infCarregar();}catch(e){box.innerHTML=`<div class="or-app"><h2>ORCRIM</h2><p>Não foi possível carregar o cadastro de infratores: ${orEsc(e.message)}</p></div>`;return;}
-  orLoad(); if(!OR_STATE.orgs.length){const id=orUid();OR_STATE.orgs.push({id,name:'Nova ORCRIM',cards:[]});OR_STATE.active=id;orSave();}
+  orLoad(); orCleanDeletedPeople(); if(!OR_STATE.orgs.length){const id=orUid();OR_STATE.orgs.push({id,name:'Nova ORCRIM',cards:[]});OR_STATE.active=id;orSave();}
   orRender();
 }
 function orRender(){
- const box=document.getElementById('area-corpo');if(!box)return;const org=orActive();
+ const box=document.getElementById('area-corpo');if(!box)return;orCleanDeletedPeople();const org=orActive();
  box.innerHTML=`<div class="or-app"><div class="or-head"><div><div class="or-brand">ORCRIM <span style="font-size:12px;color:#8290a5;font-weight:500">/ Organogramas</span></div><div class="or-sub">Estrutura visual manual · arraste os cards para organizar · não altera os vínculos do cadastro</div></div><div class="or-actions"><button class="or-btn" id="or-new">＋ Nova ORCRIM</button><button class="or-btn" id="or-rename" ${org?'':'disabled'}>Renomear</button><button class="or-btn" id="or-export">Exportar PDF</button></div></div>
  <div class="or-orglist" id="or-orglist">${OR_STATE.orgs.map(o=>`<button class="or-orgpill ${o.id===OR_STATE.active?'active':''}" data-org="${orEsc(o.id)}">${orEsc(o.name)} <span style="opacity:.65">· ${o.cards.length}</span></button>`).join('')}</div>
  <div class="or-layout" style="margin-top:14px"><section class="or-stage"><div class="or-stagebar"><div><b>${orEsc(org?.name||'Selecione uma ORCRIM')}</b><div class="or-muted">Pirâmide livre: o posicionamento é definido por você.</div></div><div class="or-actions"><button class="or-btn primary" id="or-add">＋ Adicionar indivíduo</button><button class="or-btn" id="or-reset">Organizar em pirâmide</button></div></div><div class="or-canvas"><div class="or-board" id="or-board"><svg class="or-lines" id="or-lines"></svg>${(org?.cards||[]).map(c=>orCardHtml(c)).join('')||'<div class="or-empty" style="position:absolute;left:25%;top:35%;width:50%">Esta estrutura está vazia.<br>Adicione um indivíduo do cadastro e posicione os cards livremente.</div>'}</div></div></section>
