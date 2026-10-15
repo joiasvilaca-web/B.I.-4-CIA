@@ -4302,21 +4302,26 @@ function infCadastro(c){
   const {lista}=infConjunto(); const o=INF.ord; const F=INF.F;
   const val=(p)=> o.k==='score'?infScore(p).total : o.k==='nome'?infNorm(p.nome) : o.k==='risco'?(p.risco||1) : o.k==='nivel'?(p.nivel||99) : o.k==='grau'?infScore(p).grau : o.k==='ddu'?(INF.cache.ddusDe.get(p.id)||[]).length : o.k==='crimes'?infScore(p).n : o.k==='alvo'?-(infAlvo().get(p.id)||{posGeral:1e9}).posGeral : infNorm(p[o.k]||'');
   const L=lista.slice().sort((a,b)=>{ const x=val(a),y=val(b); return (x>y?1:x<y?-1:0)*o.d || a.id-b.id; });
-  const PP=40, np=Math.max(1,Math.ceil(L.length/PP)); if(INF.pag>=np) INF.pag=np-1; const pg=L.slice(INF.pag*PP, INF.pag*PP+PP);
-  const th=(k,l)=>`<th data-o="${k}">${l}${o.k===k?(o.d>0?' ▲':' ▼'):''}</th>`;
-  c.innerHTML=`<div class="if-box"><div style="font-size:12px;color:#666;margin-bottom:6px"><b>${L.length}</b> de ${INF.pessoas.length} cadastrados</div>
-   <div class="if-tb"><table><thead><tr>${th('nome','Nome / alcunha')}${th('faccao','Facção')}${th('nivel','Nível')}${th('status','Situação')}${th('risco','Risco')}${th('bairro','Bairro')}${th('area','Área')}<th>Crimes</th>${th('ddu','DDU')}${th('grau','Vínculos')}${th('score','Prioridade')}${th('alvo','Alvo #')}<th></th></tr></thead><tbody>
-   ${pg.map(p=>{ const s=infScore(p); const cr=Object.keys(infCrimesDe(p,F.de,F.ate)); const nv=INF.cat.niveis.find(n=>n[0]===p.nivel);
-     return `<tr class="cl" data-id="${p.id}"><td style="white-space:nowrap">${infAvatarImg(p,34)}<span style="display:inline-block;vertical-align:middle"><b>${esc(p.nome)}</b>${p.alcunha?`<div style="color:#777">“${esc(p.alcunha)}”</div>`:''}</span></td>
-      <td>${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>${p.faccao_funcao?`<div style="color:#777;font-size:11px">${esc(p.faccao_funcao)}</div>`:''}`:'<span style="color:#aaa">—</span>'}</td>
-      <td title="${esc(nv?nv[1]:'')}">${p.nivel||'—'}${p.cargo?`<div style="color:#777;font-size:11px">${esc(p.cargo)}</div>`:''}</td><td>${infBadge(p.status)}</td><td>${infRiscoHtml(p.risco)}</td>
-      <td>${esc(p.bairro||'')}${p.lat?' 📍':''}</td><td>${esc(p.area||'')}</td><td style="max-width:240px">${cr.slice(0,4).map(x=>`<span class="if-chip">${esc(x)}</span>`).join('')}${cr.length>4?`<span class="if-chip">+${cr.length-4}</span>`:''}</td>
-      <td style="text-align:center" title="${esc((INF.cache.ddusDe.get(p.id)||[]).map(d=>d.protocolo).join(', '))}">${(INF.cache.ddusDe.get(p.id)||[]).length||'—'}</td><td style="text-align:center">${s.grau||'—'}</td><td><b>${s.total.toLocaleString('pt-BR',{maximumFractionDigits:1})}</b></td><td style="text-align:center">${infAlvoPosHtml(p.id)}</td><td><button class="btn dourado if-sm" data-apres="${p.id}" title="Apresentar este infrator">🎬</button></td></tr>`; }).join('')||'<tr><td colspan="13" style="color:#888">Nenhum infrator para os filtros escolhidos.</td></tr>'}
-   </tbody></table></div>
-   <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px"><button class="btn secundario if-sm" id="if-ant" ${INF.pag<=0?'disabled':''}>‹</button> Página ${INF.pag+1} de ${np} <button class="btn secundario if-sm" id="if-prox" ${INF.pag>=np-1?'disabled':''}>›</button></div></div>`;
-  c.querySelectorAll('th[data-o]').forEach(t=>t.onclick=()=>{ const k=t.dataset.o; INF.ord=INF.ord.k===k?{k,d:-o.d}:{k,d:(k==='score'||k==='risco'||k==='grau'||k==='ddu'||k==='alvo'?-1:1)}; infCorpo(); });
-  c.querySelectorAll('tr.cl').forEach(t=>t.onclick=ev=>{ if(ev.target.closest('[data-apres]')) return; infFicha(+t.dataset.id); });
-  c.querySelectorAll('[data-apres]').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); infApresentar(+b.dataset.apres); });
+  const PP=36, np=Math.max(1,Math.ceil(L.length/PP)); if(INF.pag>=np) INF.pag=np-1; const pg=L.slice(INF.pag*PP, INF.pag*PP+PP);
+  c.innerHTML=`<div class="if-box">
+    <div style="display:flex;gap:10px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:240px"><label for="if-card-busca"><b>Buscar infrator por nome ou alcunha</b></label><input id="if-card-busca" type="search" autocomplete="off" placeholder="Digite o nome completo ou a alcunha…" value="${esc(F.busca||'')}" style="width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px"></div>
+      <div style="font-size:12px;color:#666;padding-bottom:4px"><b>${L.length}</b> resultado(s) de ${INF.pessoas.length}</div>
+    </div>
+    <div class="if-person-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">
+    ${pg.map(p=>{ const sc=infScore(p); const foto=(infFotosDe(p.id)||[])[0]; const img=foto?.thumb || foto?.url || ''; return `<button type="button" class="if-person-card" data-person="${p.id}" style="display:flex;flex-direction:column;align-items:stretch;text-align:left;padding:0;overflow:hidden;border:1px solid #dbe2ea;border-radius:12px;background:#fff;color:#172033;cursor:pointer;box-shadow:0 2px 7px #0f172a0a;transition:transform .15s,box-shadow .15s">
+      <div style="height:176px;background:#eef2f6;display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid #e2e8f0">${img?`<img src="${esc(img)}" alt="Foto de ${esc(p.nome)}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`:`<div style="display:flex;flex-direction:column;align-items:center;gap:8px;color:#7b8798"><span style="font-size:38px">▧</span><span style="font-size:12px">Foto não cadastrada</span></div>`}</div>
+      <div style="padding:12px;display:flex;flex-direction:column;gap:7px;flex:1"><b style="font-size:15px;line-height:1.35">${esc(p.nome||'Nome não informado')}</b>${p.alcunha?`<div style="font-size:13px;color:#596579">Alcunha: <strong>${esc(p.alcunha)}</strong></div>`:`<div style="font-size:12px;color:#8a94a3">Sem alcunha cadastrada</div>`}
+       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${infBadge(p.status)}${p.faccao?`<span class="if-b" style="background:${infCorFaccao(p.faccao)}">${esc(p.faccao)}</span>`:''}</div>
+       <div style="font-size:12px;color:#667085">${p.bairro?`Bairro: ${esc(p.bairro)}`:'Bairro não informado'}${p.area?` · ${esc(p.area)}`:''}</div>
+       <div style="font-size:12px;color:#667085;margin-top:auto;padding-top:5px;border-top:1px solid #edf0f4">${sc.grau||0} vínculo(s) · <b>Ver ficha completa →</b></div>
+      </div></button>`; }).join('')||'<div style="grid-column:1/-1;padding:28px;text-align:center;color:#667085;border:1px dashed #cbd5e1;border-radius:10px">Nenhum resultado. Confira o nome ou a alcunha digitada e os filtros ativos.</div>'}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:14px;font-size:12px"><button class="btn secundario if-sm" id="if-ant" ${INF.pag<=0?'disabled':''}>‹ Anterior</button> Página ${INF.pag+1} de ${np} <button class="btn secundario if-sm" id="if-prox" ${INF.pag>=np-1?'disabled':''}>Próxima ›</button></div>
+  </div>`;
+  const search=c.querySelector('#if-card-busca'); let timer;
+  if(search) search.addEventListener('input',()=>{ clearTimeout(timer); const value=search.value; timer=setTimeout(()=>{ INF.F.busca=value; INF.pag=0; infCorpo(); const again=document.getElementById('if-card-busca'); if(again){again.focus();again.setSelectionRange(value.length,value.length);} },180); });
+  c.querySelectorAll('[data-person]').forEach(card=>card.onclick=()=>infFicha(+card.dataset.person));
   document.getElementById('if-ant').onclick=()=>{INF.pag--;infCorpo();}; document.getElementById('if-prox').onclick=()=>{INF.pag++;infCorpo();};
 }
 function infCsv(){
